@@ -1,57 +1,57 @@
 ---
 name: parallel-subagents
-description: 将独立的只读调研或互斥写域并发交给 subagent。触发：用户显式要求并行，或 Root 判断并行能显著提速且任务边界已决策完整。写任务必须互不依赖、文件 ownership 不重叠。
+description: Hand independent read-only investigation or mutually exclusive write domains to subagents concurrently. Triggers when the user explicitly asks for parallelism, or when Root judges that parallelism clearly speeds things up and the task boundaries are decision-complete. Write tasks must not depend on each other and must not overlap in file ownership.
 ---
 
-# 并行 subagent
+# Parallel subagents
 
-并行是执行策略，不是固定流程阶段。Root 始终负责用户交互、最终 plan、共享决策、主 worktree 集成和最终汇报。
+Parallelism is an execution strategy, not a fixed process stage. Root always owns user interaction, the final plan, shared decisions, main-worktree integration, and the final report.
 
-## 何时并行
+## When to parallelize
 
-- 有两个以上相互独立、耗时的 repo/docs 调研问题：可并发 explorer。
-- 实现决策已经完整，存在两个以上互不依赖的写域，且并发能明显缩短时间：可并发 worker。
-- 用户显式指定并行或某个 subagent：按用户要求拆分，但仍校验安全边界。
+- Two or more mutually independent, time-consuming repo/docs investigation questions: explorers may run concurrently.
+- Implementation decisions are already complete, two or more independent write domains exist, and concurrency clearly shortens the time: workers may run concurrently.
+- The user explicitly asks for parallelism or for a specific subagent: split as the user asks, but still check the safety boundaries.
 
-以下情况串行：共享 API 仍在演化、一个任务消费另一个的新结果、会改同一文件、合并成本高于并发收益、单个 Root 足以快速完成。
+Run serially when: the shared API is still evolving, one task consumes another's new results, the same file would be modified, merge cost outweighs the concurrency gain, or a single Root can finish it quickly.
 
-## 分派前冻结
+## Freeze before dispatch
 
-Root 在 prompt 中写清：
+Root spells out in the prompt:
 
-- 目标、可观察完成条件和相关约束；
-- 独占文件或模块 ownership、禁止触达范围；
-- 已冻结的共享接口和依赖；
-- `plan-first-delivery` 冻结的 `validation_fallback_contract`；
-- 必须读取的项目文档；
-- 返回格式与允许执行的窄域检查。
+- the goal, observable completion conditions, and relevant constraints;
+- exclusive file or module ownership, and the off-limits scope;
+- the frozen shared interfaces and dependencies;
+- the `validation_fallback_contract` frozen by `plan-first-delivery`;
+- project docs that must be read;
+- the return format and the narrow-scope checks it may run.
 
-每个 worker 都要知道：它不是仓库里唯一的 writer，不得回滚或覆盖他人改动；发现并发变化时应适配当前文件状态，冲突则停下报告。
+Every worker must know: it is not the only writer in the repo, and it must not revert or overwrite someone else's changes; on finding concurrent changes it adapts to the current file state, and on conflict it stops and reports.
 
-分派写任务前还要冻结交接机制：共享 worktree 的互斥文件直接 fan-in，或独立 worktree 的 diff handoff。不能等 worker 写完才决定用 commit、patch 还是复制文件。
+Before dispatching write tasks, also freeze the handoff mechanism: direct fan-in of mutually exclusive files in a shared worktree, or a diff handoff from separate worktrees. Do not wait until the workers have finished writing to decide between commit, patch, or copying files.
 
-## 隔离与 ownership
+## Isolation and ownership
 
-- 只读 explorer 可共享 worktree，不写文件。
-- host 能把独立 worktree 的未提交 diff 完整交回 Root 时，写 worker 优先使用独立 worktree；Root 记录其绝对路径和 `base_ref`。
-- 共享 worktree 时，必须保证一文件一 owner；worker 直接写其 ownership，Root 不同时编辑这些文件。
-- 共享清单、公共接口、canonical plan、项目级配置和最终合并文件只由 Root 写。
-- 不为机械的 task 编号反复新建 fresh agent；只有真实并行边界或独立性要求才创建实例。
+- Read-only explorers can share a worktree and write no files.
+- When the host can hand a separate worktree's uncommitted diff back to Root intact, write workers prefer separate worktrees; Root records their absolute path and `base_ref`.
+- In a shared worktree, one file must have exactly one owner; a worker writes its own ownership directly, and Root does not edit those files at the same time.
+- Shared manifests, public interfaces, the canonical plan, project-level config, and final merged files are written by Root only.
+- Do not spin up fresh agents over and over to match mechanical task numbering; create an instance only for a real parallel boundary or an independence requirement.
 
 ## Worker handoff
 
-每个写 worker 返回：worktree 绝对路径、`base_ref`/当前 HEAD、`git status --short`、完整 changed/untracked paths、ownership 内的 diff、`validation_fallback_contract` 对账、窄域检查及结果、未解决项。不得自行 commit、merge、push 或开 PR。
+Every write worker returns: the worktree's absolute path, `base_ref`/current HEAD, `git status --short`, the complete changed/untracked paths, the diff within its ownership, the `validation_fallback_contract` reconciliation, the narrow-scope checks and their results, and open items. It must not commit, merge, push, or open a PR on its own.
 
-- 共享 worktree：Root 复核当前文件与返回清单即可；任何越界路径先停下处理。
-- 独立 worktree：优先用 host-native 未提交 diff handoff。共享本地磁盘时，Root 可从记录的 worktree 读取 `git diff --binary <base_ref> -- <owned paths>` 并单独核对 untracked/binary 文件，再应用到主 worktree。
-- 若 host 只能靠 commit/cherry-pick 保真交接，必须先取得用户对该 Git mutation 的明确授权；未授权就不要选这种隔离方式。无法无损交接未跟踪或二进制文件时，改用共享 worktree 的互斥 ownership。
-- Root 确认主 worktree 已完整集成后才能清理 worker worktree；不得先删唯一副本。
+- Shared worktree: Root reviewing the current files against the returned list is enough; stop and handle any out-of-bounds path first.
+- Separate worktree: prefer the host-native uncommitted diff handoff. On shared local disk, Root can read `git diff --binary <base_ref> -- <owned paths>` from the recorded worktree, check untracked/binary files separately, and then apply it to the main worktree.
+- If the host can only hand off faithfully via commit/cherry-pick, get the user's explicit authorization for that Git mutation first; without authorization, do not pick this isolation mode. When untracked or binary files cannot be handed off losslessly, switch to mutually exclusive ownership in a shared worktree.
+- Root may clean up a worker worktree only after confirming the main worktree is fully integrated; never delete the only copy first.
 
-## 集成
+## Integration
 
-1. Root 收集每个 handoff，核对 `base_ref`、changed paths、越界、冲突、共享契约和 `validation_fallback_contract` 对账。
-2. Root 按冻结的机制把 diff 集成进主 worktree，逐项确认 untracked/binary 文件，并完成必要的集成修正。
-3. 只对 fan-in 后的最终候选执行一次 `rules/post-change-verify.md` 中冻结的验证。
-4. 最终源码变化会使对应验证和 review 失效；authoritative plan 或设计输入变化会使语义/UI review 失效。只重跑受影响 gate。
+1. Root collects each handoff and checks `base_ref`, changed paths, out-of-bounds writes, conflicts, shared contracts, and the `validation_fallback_contract` reconciliation.
+2. Root integrates the diffs into the main worktree by the frozen mechanism, confirms untracked/binary files item by item, and makes the integration fixes needed.
+3. Run the verification frozen in `rules/post-change-verify.md` once, on the post-fan-in final candidate only.
+4. A change to the final source invalidates the corresponding verification and reviews; a change to the authoritative plan or design inputs invalidates the semantic/UI reviews. Rerun only the affected gates.
 
-worker 可以执行为安全合并所需的窄域检查，但不替代最终集成验证，也不自行做广泛 review。
+Workers may run the narrow-scope checks needed for a safe merge, but these do not replace the final integration verification, and workers do not run broad reviews on their own.

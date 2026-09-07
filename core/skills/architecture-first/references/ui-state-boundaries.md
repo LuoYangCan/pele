@@ -1,43 +1,43 @@
-# UI state 与事件流边界
+# UI state and event-flow boundaries
 
-仅在 `architecture-first` 已确认 source-of-truth、状态生命周期或跨屏事件流存在未决 material choice 时读取。单个 view 的局部 state、普通 binding 或沿用既有 UI 架构不触发。
+Read only when `architecture-first` has already confirmed an unresolved material choice in source-of-truth, state lifecycle, or cross-screen event flow. A single view's local state, an ordinary binding, or staying on the existing UI architecture does not trigger it.
 
-## 必须冻结的事实
+## Facts that must be frozen
 
-- 哪个对象是 authoritative state owner；
-- state 生命周期是 view、flow、feature、session 还是 process；
-- 用户事件、异步结果和外部事件如何进入；
-- IO/effect 由谁启动、取消和回传；
-- 是否存在 dual write、循环更新或多个 competing source-of-truth；
-- 测试需要观察 state、event、effect 还是导航结果。
+- which object is the authoritative state owner;
+- whether the state lifecycle is view, flow, feature, session, or process;
+- how user events, async results, and external events enter;
+- who starts, cancels, and returns IO/effects;
+- whether there is a dual write, an update cycle, or multiple competing sources-of-truth;
+- whether tests need to observe state, events, effects, or navigation results.
 
-## 形态路由
+## Shape routing
 
-| 约束 | 优先形态 | 边界要求 |
+| Constraint | Preferred shape | Boundary requirement |
 | --- | --- | --- |
-| view-local、短生命周期、无共享 | 平台原生 local state / 简单 MVC | state 不外泄，不建全局 store |
-| 单 screen/feature 的可测派生状态与异步入口 | MVVM / Presenter | ViewModel/Presenter 不持有具体 view toolkit；effect dependency 可注入 |
-| 明确状态迁移与非法事件 | 显式 state machine | 单一 transition owner；迁移和并发顺序可测 |
-| 多来源事件、复杂 effect、需要可追踪 action | Reducer / unidirectional flow | 单一 store；mutation 只在 reducer/transition；effect 明确返回 |
-| 跨 screen 的 flow/navigation ownership | Coordinator/router | feature 不直接拥有全局导航；避免 God coordinator |
-| 跨 feature/session 的共享状态 | 上提到最小共同 owner | consumer 只读/发 event；不复制可变 state |
+| view-local, short-lived, not shared | Platform-native local state / plain MVC | State does not escape; no global store |
+| Testable derived state and async entry points for one screen/feature | MVVM / Presenter | The ViewModel/Presenter holds no concrete view toolkit; effect dependencies are injectable |
+| Explicit state transitions and illegal events | Explicit state machine | A single transition owner; transitions and concurrency ordering are testable |
+| Multi-source events, complex effects, traceable actions needed | Reducer / unidirectional flow | A single store; mutation only in the reducer/transition; effects return explicitly |
+| Cross-screen flow/navigation ownership | Coordinator/router | Features do not own global navigation directly; avoid a God coordinator |
+| State shared across features/sessions | Lift to the smallest common owner | Consumers read-only or send events; do not copy mutable state |
 
-## 选择规则
+## Selection rules
 
-- 项目已采用稳定的 UI state shape 时优先复用；屏幕行数或团队规模不是切换架构的充分理由。
-- 一个简单页面不因“可测试”自动引入 store/reducer；先验证是否存在真实状态或 effect 复杂度。
-- 不把网络、数据库、时间或随机数藏进 reducer/pure transition；通过 effect boundary 输入结果。
-- 不用多个 ViewModel/store 各自维护同一业务实体；指定一个 owner 和明确同步方向。
-- 导航若只是单点 push/present，直接调用现有 router；只有 flow ownership 跨屏时新增 coordinator seam。
-- 引入新 state owner 时写清旧 owner 的移除顺序，禁止长期 dual write。
+- Reuse the project's UI state shape when it is already stable; screen line count or team size is not sufficient reason to switch architecture.
+- A simple screen does not get a store/reducer automatically for "testability"; first verify that real state or effect complexity exists.
+- Do not hide network, database, time, or randomness inside a reducer/pure transition; feed results in through the effect boundary.
+- Do not let multiple ViewModels/stores each maintain the same business entity; name one owner and an explicit sync direction.
+- When navigation is only a single push/present, call the existing router directly; add a coordinator seam only when flow ownership spans screens.
+- When introducing a new state owner, spell out the removal order for the old owner; long-lived dual writes are forbidden.
 
-## Consequences 最低要求
+## Consequences: minimum requirements
 
-在 `architecture_decision` 中记录：
+Record in `architecture_decision`:
 
-- source-of-truth 及生命周期；
-- event/effect 流向和取消点；
-- 旧状态到新状态的迁移边界；
-- transition、effect 和导航的 targeted tests。
+- the source-of-truth and its lifecycle;
+- event/effect direction of flow and cancellation points;
+- the migration boundary from old state to new state;
+- targeted tests for transitions, effects, and navigation.
 
-不要输出 MVC/MVVM/TCA 百科；只说明为何当前 owner/flow 需要所选形态，以及最近候选为何无法满足不变量。
+Do not output an MVC/MVVM/TCA encyclopedia; state only why the current owner/flow needs the chosen shape, and why the nearest candidate cannot satisfy the invariants.

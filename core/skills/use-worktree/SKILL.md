@@ -1,41 +1,41 @@
 ---
 name: use-worktree
-description: 代码改动一律用独立 git worktree 隔离，主仓 checkout 只做只读操作。触发：任何要落地 Edit/Write 的编码任务且当前不在 .worktrees/。不触发：已在 worktree 内延续当前任务、纯问答、读代码、查状态；meta 配置不自动加载本 skill，但仍服从 AGENTS 的 protected-branch 路由。
+description: Isolate every code change in a dedicated git worktree; the main checkout is for read-only operations only. Triggers on any coding task that will land Edit/Write while the cwd is not already under .worktrees/. Does not trigger when continuing the current task inside a worktree, nor for pure Q&A, reading code, or checking status; meta configuration does not auto-load this skill but still obeys the protected-branch routing in AGENTS.
 ---
 
-# 代码改动一律使用独立 worktree
+# Always use a dedicated worktree for code changes
 
-在第一次源码写入前创建 worktree。不要从当前可能含 WIP 的 HEAD 隐式派生，不在主仓 checkout 直接改代码。
+Create the worktree before the first source write. Do not implicitly derive from the current HEAD, which may hold WIP, and do not edit code directly in the main checkout.
 
-## 入口判断
+## Entry routing
 
-- 任何要落地 Edit/Write 的编码任务（新需求、bugfix、重构、补测试等）：触发，无论是否切换话题。
-- 当前路径已含 `.worktrees/`：不新建，继续使用当前 worktree。
-- 修改 rule、skill、hook、settings 等 agent harness：不自动触发本 skill；若 repo-backed meta 位于 main/master/dev，仍须按 AGENTS 先切任务分支或选择 worktree。
-- 项目规则禁止创建分支且未给 worktree 例外时：先问用户，不静默回退到主仓直改。
-- 主仓存在用户未提交改动或停在非基线分支时：先与用户确认再创建；只读确认这些改动，不移动或回滚。
+- Any coding task that will land Edit/Write (new feature, bugfix, refactor, added tests, etc.): triggers, whether or not the topic changed.
+- The current path already contains `.worktrees/`: create nothing new, keep using the current worktree.
+- Modifying the agent harness — rules, skills, hooks, settings: does not auto-trigger this skill; when repo-backed meta sits on main/master/dev, still follow AGENTS and switch to a task branch or pick a worktree first.
+- Project rules forbid creating branches and grant no worktree exception: ask the user first, do not silently fall back to editing the main checkout.
+- The main checkout has uncommitted user changes or sits on a non-baseline branch: confirm with the user before creating; inspect those changes read-only, do not move or revert them.
 
-## 复用
+## Reuse
 
-创建前先 `git worktree list`。`.worktrees/` 下已有 worktree 满足「工作区干净且其分支已合并进基线（`git merge-base --is-ancestor <branch> origin/<基线>`）」时，可在其中 `git fetch` 后从 `origin/<基线>` 直接 `git switch -c <新分支>` 复用（连同依赖解析与构建缓存）；旧分支留在原处，是否删除交用户。分支未合并或有未提交改动的 worktree 不得自动复用，须经用户明确授权。
+Run `git worktree list` before creating. When an existing worktree under `.worktrees/` satisfies "clean working tree and its branch is already merged into the baseline (`git merge-base --is-ancestor <branch> origin/<baseline>`)", you may reuse it (along with its resolved dependencies and build caches) by running `git fetch` inside it and then `git switch -c <new-branch>` straight from `origin/<baseline>`; the old branch stays where it is, and deleting it is the user's call. A worktree whose branch is unmerged or that has uncommitted changes must not be reused automatically; it needs explicit user authorization.
 
-## 创建与初始化
+## Create and initialize
 
-1. 读项目 `AGENTS.md` 确认默认基线分支；未指定时使用项目约定，不能假定所有仓库都是 `dev`。
-2. 一键 bootstrap（fetch、worktree add、复制 gitignored 配置、SPM artifacts symlink、目录信任、可选项目初始化）：
+1. Read the project `AGENTS.md` to confirm the default baseline branch; when unspecified, follow the project convention — do not assume every repo uses `dev`.
+2. One-shot bootstrap (fetch, worktree add, copy gitignored config, SPM artifacts symlink, directory trust, optional project init):
 
    ```bash
-   ~/.claude/scripts/worktree-bootstrap.sh <slug> --base <基线分支> \
-     [--type feat] [--copy <相对路径>]... [--init "<命令>"]
+   ~/.claude/scripts/worktree-bootstrap.sh <slug> --base <baseline-branch> \
+     [--type feat] [--copy <relative-path>]... [--init "<command>"]
    ```
 
-   脚本默认复制主仓存在的 `.claude/settings.local.json`；SPM 只 symlink `build/DerivedData/SourcePackages/artifacts`，不共享 `checkouts`、`repositories` 或 `workspace-state.json`；复制的文件内容不在输出中暴露。`--init` 只运行让仓库可编辑所必需的初始化（codegen、依赖安装、项目生成）。脚本不可用时手动执行同等步骤（`git fetch` + `git worktree add .worktrees/<slug> -b <type>/<slug> origin/<基线>` + `trust-dir.sh "$PWD"`）。
-3. 分支类型通常为 `feat | fix | refactor | chore | docs | test | perf | style`；遵守项目或 host 的分支命名约定。
+   By default the script copies `.claude/settings.local.json` when the main checkout has one; for SPM it only symlinks `build/DerivedData/SourcePackages/artifacts` and does not share `checkouts`, `repositories`, or `workspace-state.json`; the contents of copied files are never exposed in the output. `--init` runs only the initialization required to make the repo editable (codegen, dependency install, project generation). When the script is unavailable, perform the equivalent steps manually (`git fetch` + `git worktree add .worktrees/<slug> -b <type>/<slug> origin/<baseline>` + `trust-dir.sh "$PWD"`).
+3. The branch type is usually `feat | fix | refactor | chore | docs | test | perf | style`; follow the project's or host's branch naming convention.
 
-初始化阶段不做 baseline build、不预热 Simulator、不自动打开 IDE；最终候选统一按 `rules/post-change-verify.md` 验证。初始化失败时先区分本地配置、依赖和环境问题，不把环境失败当成源码失败；用户明确要求不解析依赖时跳过相关初始化。
+The init stage does no baseline build, does not warm up the Simulator, and does not open the IDE automatically; the final candidate is verified uniformly per `rules/post-change-verify.md`. When init fails, first separate local-config, dependency, and environment problems — do not treat an environment failure as a source failure; skip the related init when the user explicitly asks not to resolve dependencies.
 
-## 生命周期
+## Lifecycle
 
-- PR 或后续迭代仍需该分支：保留 worktree。
-- 无改动且任务取消：可移除 worktree。
-- 有未提交改动时，未经用户明确授权不得丢弃或强制移除。
+- The branch is still needed for a PR or further iteration: keep the worktree.
+- No changes and the task is cancelled: the worktree may be removed.
+- With uncommitted changes, never discard or force-remove without explicit user authorization.

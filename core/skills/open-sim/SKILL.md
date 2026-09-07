@@ -1,57 +1,57 @@
 ---
 name: open-sim
-description: Build the iOS app, then install + launch it on this worktree's Simulator and bring the window to front. Use when the user asks to "打开模拟器", "open simulator", "跑模拟器", "在模拟器看效果", "编译跑一下", "build 跑模拟器", "launch on simulator". Skip for macOS app; for a real iPhone use the `run-device` skill instead.
+description: Build the iOS app, then install + launch it on this worktree's Simulator and bring the window to front. Use when the user asks to "open the simulator", "open simulator", "run the simulator", "see how it looks in the simulator", "build and run it", "build and run on simulator", "launch on simulator". Skip for macOS app; for a real iPhone use the `run-device` skill instead.
 ---
 
 # open-sim
 
-「编译 → 装 → 启动 → 把 Simulator 窗口推到前台」一把梭。机械部分下沉在共享脚本 `~/.claude/scripts/run-ios.sh`（`--target sim`），本 skill 只负责调它 + 把结果转述给用户。真机版是 `run-device`（`--target device`），共用同一个脚本。
+"Build → install → launch → bring the Simulator window to the front" in one shot. The mechanical part lives in the shared script `~/.claude/scripts/run-ios.sh` (`--target sim`); this skill only calls it and relays the result to the user. The real-device counterpart is `run-device` (`--target device`), sharing the same script.
 
-## 适用场景
+## When to use
 
-- 刚改完 iOS 代码、想立刻 build + 在模拟器看效果
-- 想从命令行 build + 启动 app 而不打开 Xcode
+- Just changed iOS code and want to build + see it in the simulator right away
+- Want to build + launch the app from the command line without opening Xcode
 
-不适用：macOS app · **真机（用 `run-device`）** · release / archive 产物。
+Not for: macOS apps · **a real device (use `run-device`)** · release / archive artifacts.
 
-## 前置假设
+## Assumptions
 
-- cwd 在 iOS 仓库（含 worktree）里某层，向上能找到 `justfile`
-- 项目用 `just build-ios` build iOS Simulator Debug
-- worktree 场景：装到 per-worktree `sim-<slug>`；非 worktree：退回 booted / 最新可用 iPhone（脚本内部 fallback）
+- cwd is somewhere inside the iOS repo (worktree included), with a `justfile` findable upward
+- The project builds iOS Simulator Debug with `just build-ios`
+- In a worktree: install to the per-worktree `sim-<slug>`; outside a worktree: fall back to a booted / newest available iPhone (the script's internal fallback)
 
-## 执行
+## Run
 
-默认每次 build（保证看到当前代码）：
+Build every time by default (so you see the current code):
 
 ```bash
 bash ~/.claude/scripts/run-ios.sh --target sim
 ```
 
-- 用户**显式**说「不用 build / 跳过编译 / 直接装已有产物」→ 加 `--no-build`：
+- The user **explicitly** says "no build / skip compiling / just install the existing artifact" → add `--no-build`:
   ```bash
   bash ~/.claude/scripts/run-ios.sh --target sim --no-build
   ```
 
-脚本会 build → 定位产物（扫 `Build/Products/*-iphonesimulator/`，取最新的 `.app`；configuration 名由项目定义且会变，不写死 `Debug-`） → 从产物 `Info.plist` 读 bundle id → 经 `worktree-sim.sh ensure` 拿 per-worktree sim（非 worktree 自动 fallback）→ `simctl install` + `launch` → `open -a Simulator`，最后打印 `----- run-ios result -----` 结果块。
+The script builds → locates the build artifact (scans `Build/Products/*-iphonesimulator/`, takes the newest `.app`; the configuration name is project-defined and can change, so `Debug-` is not hardcoded) → reads the bundle id from the artifact's `Info.plist` → gets the per-worktree sim via `worktree-sim.sh ensure` (auto fallback outside a worktree) → `simctl install` + `launch` → `open -a Simulator`, and finally prints the `----- run-ios result -----` result block.
 
-## 报告给用户
+## Report to the user
 
-转述结果块里的：用的哪台 sim（`WHERE`）+ UDID + `BUNDLE_ID` + `PID`。任何步骤失败脚本会 `ERROR:` + 非零退出 —— **原样把错误报给用户，不要自动尝试别的方案**。
+Relay from the result block: which sim was used (`WHERE`) + UDID + `BUNDLE_ID` + `PID`. On any step failure the script emits `ERROR:` and exits non-zero — **report the error to the user verbatim, do not automatically try another approach**.
 
-## 省 context（可选）
+## Save context (optional)
 
-`just build-ios` 会吐几千行 xcodebuild 日志。想把它挡在主对话外：Claude 派 Haiku / Sonnet；Codex 派 `command-runner`（Luna low），角色未加载时用 Terra low。subagent 只跑命令并返回结果块，不判断代码质量。
+`just build-ios` spits out thousands of lines of xcodebuild log. To keep it out of the main conversation: on Claude dispatch Haiku / Sonnet; on Codex dispatch `command-runner` (Luna low), or Terra low when that role is not loaded. The subagent only runs the command and returns the result block; it does not judge code quality.
 
-## 失败处理（脚本退出码）
+## Failure handling (script exit codes)
 
-| 退出码 | 含义 | 怎么办 |
+| Exit code | Meaning | What to do |
 |---|---|---|
-| 2 | build 失败 | 原样报 xcodebuild 错误，不继续 |
-| 3 | 找不到 `.app` | 仅 `--no-build` 时可能；让用户去掉 `--no-build` 重跑 |
-| 4 | install / launch 失败 / 没可用 iPhone sim | 多半 sim 环境问题；提示装 iOS runtime（Xcode > Settings > Platforms）|
+| 2 | Build failed | Report the xcodebuild error verbatim, do not continue |
+| 3 | No `.app` found | Only possible with `--no-build`; have the user drop `--no-build` and re-run |
+| 4 | install / launch failed / no usable iPhone sim | Usually a sim environment problem; suggest installing an iOS runtime (Xcode > Settings > Platforms)|
 
-## 不做的事
+## Out of scope
 
-- ❌ 不跑 `just generate` · 不切 scheme · 不处理 macOS / 真机（真机走 `run-device`）
-- ❌ 不在用户没显式要求时跳过 build（默认每次 build）
+- ❌ Does not run `just generate` · does not switch scheme · does not handle macOS / a real device (real device goes to `run-device`)
+- ❌ Does not skip the build unless the user explicitly asks (builds every time by default)

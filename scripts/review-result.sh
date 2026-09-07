@@ -133,7 +133,7 @@ append_cleanup_fixed() {
   local evidence summary category
 
   if [[ "$(jq '.fixed | length' "$cleanup")" -eq 0 ]]; then
-    printf '无可修项。\n'
+    printf 'Nothing to fix.\n'
     return
   fi
 
@@ -147,12 +147,12 @@ append_cleanup_skipped() {
   local evidence summary reason
 
   if [[ "$(jq '.skipped | length' "$cleanup")" -eq 0 ]]; then
-    printf '无。\n'
+    printf 'None.\n'
     return
   fi
 
   while IFS=$'\t' read -r evidence summary reason; do
-    printf -- '- [ ] **%s** — %s · 跳过原因：%s\n' "$evidence" "$summary" "$reason"
+    printf -- '- [ ] **%s** — %s · skipped because: %s\n' "$evidence" "$summary" "$reason"
   done < <(jq -r '.skipped[] | ["\(.file):\(.line)", .summary, .reason] | @tsv' "$cleanup")
 }
 
@@ -176,27 +176,27 @@ render_report() {
   {
     printf '<!-- review-fingerprint: %s -->\n' "$fingerprint"
     printf '# Code Review: %s\n\n' "$branch"
-    printf '> 时间：%s · 范围：%s...HEAD + 未提交改动（含 cleanup 落地的清理）\n' "$now" "$base_ref"
+    printf '> Time: %s · Scope: %s...HEAD plus uncommitted changes (including cleanup that has landed)\n' "$now" "$base_ref"
     printf '> Reviewer: %s（report-only）\n' "$reviewer_label"
-    printf '> 清理前快照：%s\n\n' "$snapshot_path"
-    printf '## Verdict\n\n`%s`\n\n一句话总结：%s\n\n' "$verdict" "$summary"
-    printf '## 必修（fail-blocking）\n\n'
-    append_findings "$result" must_fix '无。'
-    printf '\n## 建议（nice-to-have）\n\n'
-    append_findings "$result" suggestions '无。'
-    printf '\n## Cleanup 已落地的质量修复\n\n'
+    printf '> Pre-cleanup snapshot: %s\n\n' "$snapshot_path"
+    printf '## Verdict\n\n`%s`\n\nOne-line summary: %s\n\n' "$verdict" "$summary"
+    printf '## Must fix (fail-blocking)\n\n'
+    append_findings "$result" must_fix 'None.'
+    printf '\n## Suggestions (nice-to-have)\n\n'
+    append_findings "$result" suggestions 'None.'
+    printf '\n## Quality fixes cleanup already landed\n\n'
     append_cleanup_fixed "$cleanup"
-    printf '\n## Cleanup 跳过的发现\n\n'
+    printf '\n## Findings cleanup skipped\n\n'
     append_cleanup_skipped "$cleanup"
-    printf '\n## 测试用代码残留\n\n'
-    append_findings "$result" test_residue '无残留。'
-    printf '\n## 无用代码残留\n\n'
-    append_findings "$result" dead_code '无残留。'
-    printf '\n## iOS 性能反模式（建议层，非阻断）\n\n'
-    append_findings "$result" perf_advisory '无。'
-    printf '\n## 最终计划 / 项目规范偏离\n\n'
-    append_findings "$result" plan_deviations '全部符合。'
-    printf '\n## 整体评估\n\n%s\n' "$assessment"
+    printf '\n## Test-only code left behind\n\n'
+    append_findings "$result" test_residue 'None left behind.'
+    printf '\n## Dead code left behind\n\n'
+    append_findings "$result" dead_code 'None left behind.'
+    printf '\n## iOS performance anti-patterns (advisory, non-blocking)\n\n'
+    append_findings "$result" perf_advisory 'None.'
+    printf '\n## Deviations from the final plan / project rules\n\n'
+    append_findings "$result" plan_deviations 'Fully compliant.'
+    printf '\n## Overall assessment\n\n%s\n' "$assessment"
   } >"$output"
 }
 

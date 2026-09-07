@@ -52,10 +52,10 @@ If no interactive question tool is available, ask a plain-text confirmation inst
 
 Allowed textual selections:
 
-- Option 1: "删 worktree + branch", "delete worktree and branch", "PR merged 了删掉"
-- Option 2: "删 worktree 保留 branch", "delete worktree keep branch"
-- Option 3: "保留", "keep worktree", "别删"
-- Option 4: "取消", "cancel"
+- Option 1: "delete worktree + branch", "delete worktree and branch", "PR merged, delete it"
+- Option 2: "delete worktree, keep branch", "delete worktree keep branch"
+- Option 3: "keep", "keep worktree", "do not delete"
+- Option 4: "cancel"
 
 Recommended default for the prompt: option 1 when PR is `MERGED`, uncommitted files = 0, and unpushed commits = 0; otherwise option 3.
 

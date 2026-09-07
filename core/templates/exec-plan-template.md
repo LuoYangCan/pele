@@ -8,7 +8,7 @@
 
 ## Goal and done
 
-<用户可观察结果与完成判据>
+<user-observable outcome and completion criteria>
 
 ## Scope and constraints
 
@@ -18,7 +18,7 @@
 
 ## Decisions and affected surfaces
 
-- <关键接口、数据流、兼容/迁移决策>
+- <key interfaces, data flow, compatibility/migration decisions>
 - Expected paths/modules: <...>
 
 ## Milestones and ownership
@@ -27,7 +27,7 @@
 | --- | --- | --- | --- |
 | <result-oriented unit> | Root / worker-name | <none / milestone> | pending |
 
-共享文件只由 Root 写；并行 writer 的文件 ownership 不得重叠。
+Shared files are written by Root only; parallel writers must not overlap in file ownership.
 
 ## Verification and rollback
 

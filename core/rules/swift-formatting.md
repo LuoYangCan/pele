@@ -1,7 +1,7 @@
-# Swift 代码风格
+# Swift code style
 
-- 所有 Swift 代码必须遵守项目配置的 SwiftLint 和 SwiftFormat 规则（典型配置文件：`.swiftlint.yml` / `.swiftformat`）
-- 规则冲突时以自动修复器为准：若项目的 lint-fix 命令改了代码风格，服从它，不要回滚
-- 不允许用 `// swiftlint:disable ...` 绕过规则，除非理由清晰且写在注释里
+- All Swift code must follow the project's configured SwiftLint and SwiftFormat rules (typical config files: `.swiftlint.yml` / `.swiftformat`)
+- On rule conflicts the auto-fixer wins: if the project's lint-fix command changed the code style, obey it, do not revert
+- Do not use `// swiftlint:disable ...` to bypass a rule unless the reason is clear and written in a comment
 
-> push / 开 PR 前的强制 `<your project's lint-check command>` 由 PreToolUse hook 兜底（如果你配置了），本规则不重复规定操作步骤。
+> The mandatory `<your project's lint-check command>` before push / opening a PR is backstopped by a PreToolUse hook (if you configured one); this rule does not restate the steps.

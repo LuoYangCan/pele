@@ -1,5 +1,5 @@
 ---
-description: 收尾 — 合理提交当前改动、push 当前分支并开 PR。不跑 review 或 PR review
+description: Wrap up — commit the current changes sensibly, push the current branch, and open a PR. Does not run review or PR review
 ---
 
 Use the source-command-ship skill:

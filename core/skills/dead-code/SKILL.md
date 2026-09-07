@@ -5,121 +5,121 @@ description: Scan recent code changes for "zombie code" — newly-added or modif
 
 # dead-code
 
-Agent 反复迭代后，常常留下**僵尸代码**——存在于仓库里、却没有任何调用方的方法、类型、enum case、孤儿文件。这些代码编译能过、CI 也过，但是死的。本 skill 在用户显式调用时扫描**最近的改动**，把可疑的僵尸列出来让用户拍板，**绝不自动删除**。
+After repeated agent iteration, **zombie code** is often left behind — methods, types, enum cases, and orphan files that live in the repo with no caller at all. It compiles, CI passes, but it is dead. When the user explicitly invokes it, this skill scans **recent changes**, lists the suspected zombies for the user to decide on, and **never deletes automatically**.
 
-> 当前实现仅支持 **Swift** 项目（依赖 [Periphery](https://github.com/peripheryapp/periphery) 的 SourceKit 索引）。其他语言生态可参考相同的「扫描 → 过滤到改动范围 → 分级 → 用户拍板」骨架，换底层工具（如 TypeScript: `ts-prune`、Python: `vulture`、Go: `unused`、Kotlin: `detekt --baseline` + `unused` rule）。
+> The current implementation supports **Swift** projects only (it relies on [Periphery](https://github.com/peripheryapp/periphery)'s SourceKit index). Other language ecosystems can follow the same skeleton — scan → filter to the changed scope → tier → user decides — with a different underlying tool (e.g. TypeScript: `ts-prune`, Python: `vulture`, Go: `unused`, Kotlin: `detekt --baseline` + the `unused` rule).
 >
-> `/review` 的 report-only reviewer 不调用本 skill；它只按 `review-contract.md` 对 changed paths 做窄域 `rg` 引用核对。
+> The report-only reviewer in `/review` does not invoke this skill; per `review-contract.md` it only does a narrow-scope `rg` reference check over changed paths.
 
-## 触发条件
+## Trigger conditions
 
-**触发**（用户显式说）：
+**Triggers** (the user explicitly says):
 
-- 「扫一下僵尸代码」「清理一下没人用的方法」
-- 「这次改动有没有遗弃代码」「dead code check」
-- 「跑一下 dead-code skill」
-- 最终实现 diff 稳定后，Root 想做一次集中 cleanup
-- PR 推之前想 self-review unused code
+- "scan for zombie code", "clean up the methods nobody uses"
+- "did this change leave abandoned code", "dead code check"
+- "run the dead-code skill"
+- After the final implementation diff is stable, Root wants one concentrated cleanup
+- Before pushing a PR, self-review unused code
 
-**不触发**：
+**Does not trigger**:
 
-- 当前 diff 里没有 Swift 文件改动（本 skill 只懂 Swift）
-- 用户正在写代码中段，明确说「先放着，等做完再扫」
-- 任务是修 lint / 修 typo / 改文案 —— 那种改动产不出僵尸
+- No Swift file changes in the current diff (this skill only understands Swift)
+- The user is mid-implementation and explicitly says "leave it, scan when I'm done"
+- The task is fixing lint / typos / copy — such changes do not produce zombies
 
-## 扫描范围
+## Scan scope
 
-默认范围是**当前 worktree 的 `<main-branch>...HEAD` + 未提交改动**，用以下命令拼出来（按你项目主分支替换 `dev` / `main`）：
+The default scope is **`<main-branch>...HEAD` in the current worktree plus uncommitted changes**, assembled with the commands below (substitute your project's main branch for `dev` / `main`):
 
 ```bash
-# base = merge-base 到 origin/<main-branch>（兜底到本地分支 / HEAD~1）
-MAIN=dev   # 或 main / master，按项目实际改
+# base = merge-base against origin/<main-branch> (fall back to the local branch / HEAD~1)
+MAIN=dev   # or main / master, adjust to the project
 BASE=$(git merge-base HEAD origin/$MAIN 2>/dev/null \
        || git merge-base HEAD $MAIN 2>/dev/null \
        || echo HEAD~1)
 
-# 改动 / 新增的 Swift 文件
+# changed / added Swift files
 {
-  git diff --name-only --diff-filter=AMR "$BASE" -- '*.swift'    # 已提交但还没 push 出去
-  git diff --name-only -- '*.swift'                              # 未 staged
+  git diff --name-only --diff-filter=AMR "$BASE" -- '*.swift'    # committed but not pushed yet
+  git diff --name-only -- '*.swift'                              # unstaged
   git diff --name-only --cached -- '*.swift'                     # staged
-  git ls-files --others --exclude-standard -- '*.swift'          # untracked 新文件
+  git ls-files --others --exclude-standard -- '*.swift'          # untracked new files
 } | sort -u
 ```
 
-如果用户**手动指定了范围**（"只看最近 3 个 commit" / "看 PR-123" / "整个 main"），按用户给的范围替换 `$BASE` 计算 diff —— 不要硬套默认值。
+If the user **specifies the scope manually** ("only the last 3 commits" / "look at PR-123" / "all of main"), compute the diff with `$BASE` replaced by the scope they gave — do not force the default.
 
-> ⚠️ **不扫主分支历史**：本 skill 设计用于「迭代中的工作」。如果用户问「整个项目有多少 dead code」，引导他直接跑 `periphery scan` 全量扫，不要走本 skill —— 全量结果太多、人工 review 不动。
+> ⚠️ **Do not scan main-branch history**: this skill is designed for work in progress. If the user asks "how much dead code does the whole project have", point them at a full `periphery scan` instead of this skill — a full-project result is too large to review by hand.
 
-## 前置：检测 Periphery
+## Prerequisite: detect Periphery
 
 ```bash
 which periphery || echo "MISSING"
 ```
 
-- **装了** → 走 [Periphery 路径](#path-a-periphery主路径)
-- **没装** → 给用户两条建议（让他选）：
-  1. 「我可以提示你装：`brew install periphery`，装完重跑本 skill」
-  2. 「也可以走 LSP fallback 路径，慢一些、覆盖率低一些。要走 fallback 吗？」
-  
-  按用户回答动手。**不要**自己 `brew install`（全局副作用、需要授权）。
+- **Installed** → take the [Periphery path](#path-a-periphery-primary-path)
+- **Not installed** → give the user two options (let them choose):
+  1. "I can prompt you to install it: `brew install periphery`, then re-run this skill"
+  2. "Or take the LSP fallback path — slower, lower coverage. Want the fallback?"
 
-## Path A: Periphery（主路径）
+  Act on the user's answer. **Do not** run `brew install` yourself (global side effect, needs authorization).
 
-### A.1 准备 Periphery 配置
+## Path A: Periphery (primary path)
 
-如果项目里已有 `.periphery.yml`，直接用它；没有就生成一个临时配置（**Periphery ≥ 3.0 schema**）：
+### A.1 Prepare the Periphery config
+
+If the project already has `.periphery.yml`, use it; otherwise generate a temporary config (**Periphery ≥ 3.0 schema**):
 
 ```bash
-# Xcode workspace 的情况
+# for an Xcode workspace
 cat > /tmp/periphery-deadcode.yml <<'EOF'
-project: <YourApp>.xcworkspace                # 或 <YourApp>.xcodeproj
+project: <YourApp>.xcworkspace                # or <YourApp>.xcodeproj
 schemes:
-  - <YourAppiOS>                              # 替换成实际 scheme（用 `xcodebuild -workspace ... -list` 看）
-retain_public: true                           # 公开 API 跨包暴露，不能在本仓库判定无引用
+  - <YourAppiOS>                              # replace with the real scheme (see `xcodebuild -workspace ... -list`)
+retain_public: true                           # public API is exposed across packages; this repo alone cannot prove it unreferenced
 retain_objc_accessible: true
 retain_unused_protocol_func_params: true
 EOF
 ```
 
-> ⚠️ **3.x yml 字段重要变化**：`project:` 字段同时支持 `.xcworkspace` 和 `.xcodeproj`（不再有独立的 `workspace:` 字段）。`targets:` 字段已被移除，target 从 scheme 推导。如果你看到 `invalid key 'workspace'` 报错，就是版本对不上。
+> ⚠️ **Important 3.x yml field changes**: `project:` now accepts both `.xcworkspace` and `.xcodeproj` (there is no separate `workspace:` field any more). `targets:` was removed; targets are derived from the scheme. An `invalid key 'workspace'` error means the version does not match.
 
-`retain_public: true` 是**关键**——多包 SPM 项目（典型如 `packages/common/*` + `packages/ios/{Core,UI,...}` + `packages/ios/Business/*` 这种分层结构）里大量 `public` 符号是给跨包用的，Periphery 在单 target 内当然找不到调用方，但它们不是僵尸。
+`retain_public: true` is **critical** — in a multi-package SPM project (typically a layered structure like `packages/common/*` + `packages/ios/{Core,UI,...}` + `packages/ios/Business/*`), many `public` symbols exist for cross-package use; Periphery of course finds no caller inside a single target, but they are not zombies.
 
-如果项目是 SPM-only（没 xcworkspace），改成：
+If the project is SPM-only (no xcworkspace), change it to:
 
 ```yaml
 project: Path/To/Package.swift
 ```
 
-不确定 scheme 名 → 跑 `xcodebuild -workspace <YourApp>.xcworkspace -list | sed -n '/Schemes:/,$p' | head -30` 看一眼。
+Unsure of the scheme name → run `xcodebuild -workspace <YourApp>.xcworkspace -list | sed -n '/Schemes:/,$p' | head -30` and look.
 
-### A.2 跑扫描
+### A.2 Run the scan
 
 ```bash
 periphery scan --config /tmp/periphery-deadcode.yml --format json > /tmp/periphery-output.json 2> /tmp/periphery-stderr.log
 ```
 
-时间预期（典型多包 iOS app 实测）：
+Expected timings (measured on a typical multi-package iOS app):
 
-- **首次跑（无索引）**：5-10 分钟（Periphery 触发完整 SourceKit 索引）
-- **后续跑（有 Xcode/Periphery 缓存）**：1-2 分钟
-- **`--skip-build` 复用上次索引**：5-10 秒（适合短时间内连续重跑、临时改 yml 的场景）
+- **First run (no index)**: 5-10 minutes (Periphery triggers a full SourceKit index)
+- **Later runs (Xcode/Periphery cache warm)**: 1-2 minutes
+- **`--skip-build` reuses the previous index**: 5-10 seconds (fits back-to-back re-runs and quick yml tweaks)
 
 ```bash
-# 如果你确定上一次 scan 之后没改过任何 Swift 文件，可以加 --skip-build 复用索引
+# if you are sure no Swift file changed since the last scan, add --skip-build to reuse the index
 periphery scan --config /tmp/periphery-deadcode.yml --format json --skip-build > /tmp/periphery-output.json 2> /tmp/periphery-stderr.log
 ```
 
-build 失败时 Periphery 会在 stderr 报错——**不要** silent ignore，把 stderr 关键行展示给用户、问他是否需要先修 build。
+When the build fails Periphery reports it on stderr — **do not** silently ignore it; show the key stderr lines to the user and ask whether to fix the build first.
 
-### A.3 过滤到「最近改动」
+### A.3 Filter to recent changes
 
-Periphery 输出全量 unused 列表（项目老一点可能上百条），但本 skill 只关心**本轮改动产出的僵尸**。
+Periphery outputs the full unused list (hundreds of entries on an older project), but this skill only cares about **zombies produced by this round of changes**.
 
-#### A.3.1 JSON schema（实测于 Periphery 3.7.4）
+#### A.3.1 JSON schema (measured on Periphery 3.7.4)
 
-每条记录长这样：
+Each record looks like this:
 
 ```json
 {
@@ -135,26 +135,26 @@ Periphery 输出全量 unused 列表（项目老一点可能上百条），但�
 }
 ```
 
-**关键字段**：
+**Key fields**:
 
-- `.location` 是**绝对路径** + `:line:col`（不是 relative！过滤时要么把 changed-files 转 absolute、要么用 endswith 模式匹配）
-- `.kind` 是 dot-separated namespaced 字符串：`var.instance` / `var.static` / `var.parameter` / `function.method.instance` / `function.method.static` / `function.constructor` / `function.operator.infix` / `struct` / `class` / `enum` / `protocol` / `typealias` / `extension.struct` / `module`（`module` = unused import）
-- `.hints` 是数组，常见值：`unused`（声明无人调用）、`assignOnlyProperty`（只赋值从未读）。两种都是僵尸候选
-- `.accessibility` ∈ {`open`, `public`, `internal`, `fileprivate`, `private`}——配合「豁免清单」的 public 跨包判定使用
+- `.location` is an **absolute path** + `:line:col` (not relative! when filtering, either convert changed-files to absolute or match with an endswith pattern)
+- `.kind` is a dot-separated namespaced string: `var.instance` / `var.static` / `var.parameter` / `function.method.instance` / `function.method.static` / `function.constructor` / `function.operator.infix` / `struct` / `class` / `enum` / `protocol` / `typealias` / `extension.struct` / `module` (`module` = unused import)
+- `.hints` is an array; common values: `unused` (declaration has no caller), `assignOnlyProperty` (assigned but never read). Both are zombie candidates
+- `.accessibility` ∈ {`open`, `public`, `internal`, `fileprivate`, `private`} — use it together with the exemption list's cross-package `public` rule
 
-#### A.3.2 把 Periphery 结果交集到本轮改动
+#### A.3.2 Intersect Periphery results with this round's changes
 
 ```bash
-# 把 changed files 转 absolute path（Periphery location 是 absolute）
+# convert changed files to absolute paths (Periphery locations are absolute)
 REPO=$(git rev-parse --show-toplevel)
 sed "s|^|$REPO/|" /tmp/changed-files.txt > /tmp/changed-files-abs.txt
 
-# 抽 Periphery 结果，按 absolute file 路径过滤
+# extract Periphery results, filter by absolute file path
 jq -r '.[] | "\(.location)\t\(.kind)\t\(.name)\t\(.accessibility)\t\(.hints | join(","))"' /tmp/periphery-output.json \
   | awk -F'\t' '
       NR==FNR { abs[$0]=1; next }
       {
-        # location 形如 "/abs/path/File.swift:15:1"——按第一个 ":" 切出文件路径
+        # location looks like "/abs/path/File.swift:15:1" — cut the file path at the first ":"
         n = index($1, ":")
         file = substr($1, 1, n - 1)
         if (file in abs) print
@@ -163,34 +163,34 @@ jq -r '.[] | "\(.location)\t\(.kind)\t\(.name)\t\(.accessibility)\t\(.hints | jo
   > /tmp/periphery-changed.tsv
 ```
 
-**注意**：仅过滤到 changed files 还不够——如果一个旧文件里某个旧符号变成无人调用（被本轮 diff 删除调用方导致），这是僵尸但 Periphery 报告里仅显示该旧文件的某行，文件不在 changed-files 里。补一个第二轮过滤：
+**Note**: filtering to changed files is not enough — if an old symbol in an old file loses its last caller (because this round's diff deleted the caller), it is a zombie, but the Periphery report only shows a line in that old file, which is not in changed-files. Add a second filtering pass:
 
 ```bash
-# 拿 changed files 里所有「被删除的」symbol references —— 这些可能让旧符号变成 unused
+# collect every deleted symbol reference in the changed files — these can turn old symbols unused
 git diff "$BASE" -- '*.swift' | grep -E '^-' | grep -oE '\b[A-Z][A-Za-z0-9_]*\b|\b[a-z][A-Za-z0-9_]*\(' | sort -u > /tmp/possibly-orphaned-refs.txt
 
-# Periphery 全量结果里 symbol name 命中以上的，也纳入候选
+# any symbol name in the full Periphery result that matches the above also becomes a candidate
 jq -r '.[] | "\(.location)\t\(.kind)\t\(.name)\t\(.accessibility)\t\(.hints | join(","))"' /tmp/periphery-output.json \
   | grep -F -f /tmp/possibly-orphaned-refs.txt \
   >> /tmp/periphery-changed.tsv
 ```
 
-合并两份过滤结果、去重，得到**本轮改动相关的僵尸候选清单**。
+Merge and dedupe the two filtered results to get the **zombie candidate list for this round's changes**.
 
-### A.4 分级标注
+### A.4 Confidence tiering
 
-把候选清单分成两档：
+Split the candidate list into two tiers:
 
-| 档位 | 含义 | 例子 |
+| Tier | Meaning | Example |
 |------|------|------|
-| **High confidence** | 私有/internal symbol、声明在本轮改动里、Periphery + LSP findReferences 都说 0 ref | 新加的 `private func formatThing()` 没人调 |
-| **Low confidence** | public symbol / @objc / 可能被 reflection 调用 / 在 protocol extension 里 / 被 @Test attribute / 是 SwiftUI `body`-only helper | `public func setupUI()` 在某个 VC 里没本仓库调用——但可能被 subclass override |
+| **High confidence** | private/internal symbol, declared in this round's changes, 0 refs from both Periphery and LSP findReferences | a newly added `private func formatThing()` with no caller |
+| **Low confidence** | public symbol / @objc / possibly called by reflection / inside a protocol extension / carries a @Test attribute / a SwiftUI `body`-only helper | `public func setupUI()` in some VC with no caller in this repo — but a subclass may override it |
 
-low-confidence 单独列出来，**不主动建议删**，仅供用户参考。
+List low-confidence items separately, **do not proactively suggest deleting them**; they are for the user's reference only.
 
-## Path B: LSP fallback（没 Periphery 时）
+## Path B: LSP fallback (no Periphery)
 
-### B.1 抽取本轮改动新增的符号
+### B.1 Extract symbols added by this round's changes
 
 ```bash
 git diff "$BASE" -- '*.swift' \
@@ -199,128 +199,128 @@ git diff "$BASE" -- '*.swift' \
   > /tmp/added-symbols.txt
 ```
 
-正则抽出来的是**候选行**，需要进一步处理：
+The regex yields **candidate lines**, which need further processing:
 
-- 拿到 file:line（用 `git diff --unified=0` 对位拿行号，或直接 grep file 里这行的 line number）
-- 拿到 symbol name（`func fooBar(...)` → `fooBar`）
+- Get file:line (use `git diff --unified=0` to align line numbers, or grep that line's line number in the file)
+- Get the symbol name (`func fooBar(...)` → `fooBar`)
 
-### B.2 对每个候选符号跑 LSP findReferences
+### B.2 Run LSP findReferences on each candidate symbol
 
 ```text
 LSP(operation="findReferences", filePath=<path>, line=<line>, character=<col>)
 ```
 
-返回的 references 数量：
+By returned reference count:
 
-- **== 1**（只有声明自己） → high-confidence 僵尸
-- **2~3 且都在同一文件** → low-confidence（可能只是 `private` 内部使用，但也可能是类内部的 placeholder）
-- **>3 或跨文件** → 不是僵尸，跳过
+- **== 1** (the declaration itself only) → high-confidence zombie
+- **2-3, all in the same file** → low-confidence (may just be `private` internal use, but may also be an in-class placeholder)
+- **>3 or across files** → not a zombie, skip
 
-### B.3 grep 二次验证
+### B.3 grep re-check
 
-LSP 在以下场景会漏：协议默认实现、`@dynamicMemberLookup`、`@objc` 暴露、`#selector(...)` 引用、`String(describing:)` 反射。所以 high-confidence 候选**再 grep 一次符号名全词匹配**：
+LSP misses these cases: protocol default implementations, `@dynamicMemberLookup`, `@objc` exposure, `#selector(...)` references, `String(describing:)` reflection. So for high-confidence candidates, **grep the symbol name once more with a whole-word match**:
 
 ```bash
 rg -n -w "<symbol>" --type swift
 ```
 
-命中数 == 1（只有声明本身）才保留为 high-confidence；否则降级到 low-confidence。
+Keep it as high-confidence only when the match count == 1 (the declaration itself); otherwise degrade it to low-confidence.
 
-> ⚠️ Path B 比 Path A 慢、覆盖度低，**不能**取代 Periphery。LSP 不懂 Swift 重载、不懂泛型派生、不懂 protocol witness——一个 false positive 让用户删了真正在用的代码就出大事。**Path B 的所有结论都建议用户人工核实**，不要给「直接删」的强建议。
+> ⚠️ Path B is slower and less complete than Path A, and **cannot** replace Periphery. LSP does not understand Swift overloads, generic derivation, or protocol witnesses — one false positive that makes the user delete live code is a serious incident. **Tell the user to hand-check every Path B conclusion**; do not give a strong "just delete it" recommendation.
 
-## 豁免清单（不视为僵尸）
+## Exemption list (not treated as zombies)
 
-下列符号即使 0 ref 也**不要**算僵尸——把它们从结果里过滤掉：
+Do **not** count the following symbols as zombies even at 0 refs — filter them out of the results:
 
-| 模式 | 理由 |
+| Pattern | Reason |
 |------|------|
-| `public` 符号在 shared / common / 平台基础层 package（多包 SPM 项目里的 `packages/common/*`、`packages/ios/{Core,UI,...}` 这种分层） | 跨包暴露，单仓库判定不了 |
-| 标了 `@objc` / `@objcMembers` / `@IBAction` / `@IBOutlet` | Obj-C runtime / IB 反射调用，静态分析看不到 |
-| 在 `Tests/` / `*Tests/` 目录的 `@Test` / `func test...()` | 由 XCTest / Swift Testing runtime 反射拉起 |
-| SwiftUI `#Preview { ... }` / `PreviewProvider` | Xcode preview 拉起 |
-| `static func == / hash(into:) / func encode(to:) / init(from:)` | 协议 witness，static analysis 容易漏 |
-| `deinit` / `init?(coder:)` | 系统反射调用 |
-| extension 里实现了某 protocol 要求的方法（即使本类型没人调它） | protocol witness |
-| 标了 `@available(*, deprecated)` | 已经在 deprecation 通道，本 skill 不重复 nag |
+| `public` symbols in a shared / common / platform-foundation package (the `packages/common/*`, `packages/ios/{Core,UI,...}` layering in a multi-package SPM project) | exposed across packages; a single repo cannot decide |
+| marked `@objc` / `@objcMembers` / `@IBAction` / `@IBOutlet` | called via Obj-C runtime / IB reflection; static analysis cannot see it |
+| `@Test` / `func test...()` under `Tests/` / `*Tests/` | launched by XCTest / Swift Testing runtime reflection |
+| SwiftUI `#Preview { ... }` / `PreviewProvider` | launched by Xcode preview |
+| `static func == / hash(into:) / func encode(to:) / init(from:)` | protocol witness; static analysis easily misses it |
+| `deinit` / `init?(coder:)` | called by system reflection |
+| a method in an extension that satisfies a protocol requirement (even when nothing calls it on this type) | protocol witness |
+| marked `@available(*, deprecated)` | already on the deprecation path; this skill does not nag again |
 
-豁免规则**显式列在报告里**——让用户知道哪些符号被本 skill 跳过了，避免「我以为它会扫」的盲点。
+List the exemption rules **explicitly in the report** — so the user knows which symbols this skill skipped, avoiding the "I thought it scanned that" blind spot.
 
-## 输出报告（强制格式）
+## Output report (mandatory format)
 
-扫描完成后**必须**用这个 markdown 模板输出，让用户一眼看清：
+After the scan you **must** output using this markdown template, so the user sees it at a glance:
 
 ```markdown
-# Dead-code 扫描报告
+# Dead-code scan report
 
-**扫描范围**：`<base>...HEAD + 未提交`（共 N 个 Swift 文件改动）
-**工具**：Periphery <version> / LSP fallback
-**耗时**：约 X 分钟
+**Scope**: `<base>...HEAD + uncommitted` (N Swift files changed)
+**Tool**: Periphery <version> / LSP fallback
+**Elapsed**: about X minutes
 
-## High confidence（建议删除，共 K 项）
+## High confidence (deletion suggested, K items)
 
-| # | File | Line | Symbol | Kind | 判定理由 |
+| # | File | Line | Symbol | Kind | Reason |
 |---|------|------|--------|------|---------|
-| 1 | `path/to/Foo.swift` | 42 | `formatThing` | private func | Periphery + LSP 0 ref，本轮新增 |
+| 1 | `path/to/Foo.swift` | 42 | `formatThing` | private func | Periphery + LSP 0 refs, added this round |
 | 2 | ... | ... | ... | ... | ... |
 
-## Low confidence（需人工核实，共 M 项）
+## Low confidence (needs a human check, M items)
 
-| # | File | Line | Symbol | Kind | 判定理由 | 建议核实步骤 |
+| # | File | Line | Symbol | Kind | Reason | Suggested check |
 |---|------|------|--------|------|---------|------------|
-| 1 | `path/to/Bar.swift` | 17 | `setupUI` | public func | public 符号、本仓库 0 ref | 全局 grep + 翻所有 import 本类的地方 |
+| 1 | `path/to/Bar.swift` | 17 | `setupUI` | public func | public symbol, 0 refs in this repo | global grep + go through every place that imports this type |
 | 2 | ... | ... | ... | ... | ... | ... |
 
-## 豁免清单（共 P 项已跳过）
+## Exemption list (P items skipped)
 
-- `public` 跨包符号：N 项（在 shared / common 层 package）
-- `@objc` 标记：N 项
-- 测试 / Preview / 协议 witness：N 项
+- `public` cross-package symbols: N
+- `@objc` marked: N
+- Tests / Preview / protocol witness: N
 
-需要看豁免明细可以告诉我。
+Tell me if you want the exemption details.
 
-## 下一步
+## Next step
 
-请挑：
-- **(A) 我帮你删 high-confidence 全部 K 项** —— 一次删除后对最终候选跑相关 build
-- **(B) 你点名删哪些** —— 列编号给我，比如「1, 3, 5」
-- **(C) 仅给删除命令清单**，你自己手动改
-- **(D) 全部不动**，先这样
+Pick one:
+- **(A) I delete all K high-confidence items for you** — one deletion pass, then run the relevant build on the final candidate
+- **(B) You name the ones to delete** — give me the numbers, e.g. "1, 3, 5"
+- **(C) Just the deletion command list**, you edit by hand
+- **(D) Change nothing** for now
 ```
 
-> 报告里的判定理由要**具体**，比如「Periphery + LSP 0 ref，本轮新增」是好的；「unused」是没用的。
+> Reasons in the report must be **specific**: "Periphery + LSP 0 refs, added this round" is good; "unused" is useless.
 
-## 删除阶段（仅当用户选 A 或 B）
+## Deletion phase (only when the user picks A or B)
 
-用户选 A / B 后：
+After the user picks A / B:
 
-1. 一次性删除用户选中的 high-confidence 声明，并清理相邻注释/空行；不要顺带重构。
-2. 按 `post-change-verify` 对最终候选运行一次相关 build。失败时根据编译证据恢复或调整具体误删项，再只重跑失效 gate。
-3. 不 commit；把 diff 和验证证据留给用户审。
+1. Delete the selected high-confidence declarations in one pass and clean up adjacent comments/blank lines; do not refactor along the way.
+2. Per `post-change-verify`, run the relevant build once on the final candidate. On failure, restore or adjust the specific mis-deleted item based on the compiler evidence, then re-run only the invalidated gate.
+3. Do not commit; leave the diff and the verification evidence for the user to review.
 
-## 已知限制
+## Known limits
 
-- **Periphery 时间**：第一次扫 5-10 分钟（build + 索引）。后续命中缓存 1-2 分钟。`--skip-build` 复用上次索引可降到 5-10 秒（详见 A.2）。
-- **跨语言桥接看不到**：Swift 调 C / C++ 的 bridging header、Swift 暴露给 Obj-C 的桥都可能被反射用。已经在豁免清单覆盖大部分，但不是 100%。
-- **运行时 dynamic dispatch**：`#selector(target.action)`、KVO key path、`String(describing:)` 反射、`UIViewController.performSegue(withIdentifier:)` 这类，静态分析理论上看不到。**low-confidence 档位**就是给这些场景留的人工审核空间。
-- **泛型 / 协议关联类型推导**：Periphery 偶尔误报某些泛型 helper。如果用户说「这个明明在用啊」，立即把它移到豁免说明里、不要硬辩。
+- **Periphery timing**: the first scan takes 5-10 minutes (build + index). Later runs hit the cache at 1-2 minutes. `--skip-build` reuses the previous index and drops to 5-10 seconds (see A.2).
+- **Cross-language bridges are invisible**: bridging headers where Swift calls C / C++, and bridges Swift exposes to Obj-C, may be used via reflection. The exemption list covers most of it, but not 100%.
+- **Runtime dynamic dispatch**: `#selector(target.action)`, KVO key paths, `String(describing:)` reflection, and `UIViewController.performSegue(withIdentifier:)` are in principle invisible to static analysis. The **low-confidence tier** exists to leave room for human review of these cases.
+- **Generics / protocol associated-type inference**: Periphery occasionally false-positives on generic helpers. If the user says "this is obviously in use", move it into the exemption notes immediately; do not argue.
 
-## 这条 skill 不做的事
+## Out of scope
 
-- ❌ **不自动 brew install Periphery** —— 全局副作用，让用户授权
-- ❌ **不扫主分支历史** —— 设计用于迭代中工作；全量扫请直接跑 `periphery scan`
-- ❌ **不自动 commit** —— 仅 Edit 文件，diff 留给用户审
-- ❌ **不替代 SwiftLint / 项目级 lint** —— 那些查的是另一类问题（风格、复杂度），本 skill 只查「无人调用」
-- ❌ **不替代 `/review`** —— `/review` 是综合 code review；本 skill 只看 dead code 这一维度
-- ❌ **不删非 Swift 代码** —— 不扫 `.m` / `.mm` / `.cpp` / `.ts`；项目要扩到其他语言时单独写 skill
-- ❌ **不在没拍板时改文件** —— 报告 + 等用户挑
+- ❌ **Does not auto `brew install` Periphery** — global side effect; let the user authorize it
+- ❌ **Does not scan main-branch history** — designed for work in progress; run `periphery scan` directly for a full scan
+- ❌ **Does not auto-commit** — only edits files; the diff is left for the user to review
+- ❌ **Does not replace SwiftLint / project lint** — those check a different class of problem (style, complexity); this skill only checks "no caller"
+- ❌ **Does not replace `/review`** — `/review` is a full code review; this skill covers the dead-code dimension only
+- ❌ **Does not delete non-Swift code** — does not scan `.m` / `.mm` / `.cpp` / `.ts`; write a separate skill when the project extends to other languages
+- ❌ **Does not touch files before a decision** — report, then wait for the user to pick
 
-## 与其他 skill / rule 的关系
+## Relationship to other skills / rules
 
-- **`architecture-first`**：只解决未决 durable boundary；新增 helper/type 本身不触发它。本 skill 在实现稳定后识别无人引用的 changed symbol。
-- **cleanup backend**：Claude 用 `/simplify`；Codex 用 `codex-simplify`。cleanup 自动 fix；本 skill 只看 unused，先报告、用户选中后才删除。
-- **`plan-first-delivery`**：用户显式要求时，在最终实现 diff 稳定后集中扫描一次；Root 采纳删除并集成。
-- **`post-change-verify`**：本 skill 不替代最终验证；删除后由 Root 或 command-runner 验证最终候选。
+- **`architecture-first`**: only resolves unresolved durable boundaries; adding a helper/type does not trigger it by itself. This skill identifies unreferenced changed symbols once the implementation is stable.
+- **cleanup backend**: Claude uses `/simplify`; Codex uses `codex-simplify`. Cleanup fixes automatically; this skill only looks at unused code — report first, delete only after the user selects.
+- **`plan-first-delivery`**: when the user explicitly asks, run one concentrated scan after the final implementation diff is stable; Root adopts the deletions and integrates.
+- **`post-change-verify`**: this skill does not replace final verification; after deletion, Root or `command-runner` verifies the final candidate.
 
-## Why（核心）
+## Why (core)
 
-Agent 频繁迭代时容易留三类僵尸：旧方法没删 / 半成品没拆 / 整个文件孤立。定位是「轻量自动化 + 人审拍板」——agent 看不到运行时反射不能自动删；人不会有耐心扫 50 个 file，工具剥离 public API / @objc / 测试这些非僵尸噪声。
+Frequent agent iteration tends to leave three kinds of zombies: old methods never deleted / half-finished work never removed / whole files orphaned. The positioning is "light automation + human decision" — the agent cannot see runtime reflection, so it must not delete on its own; a human has no patience to scan 50 files, so the tool strips non-zombie noise like public API / @objc / tests.

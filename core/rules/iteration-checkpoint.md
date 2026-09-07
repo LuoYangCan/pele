@@ -1,40 +1,40 @@
-# 回合检查点：3 轮问 / 7 轮对齐
+# Turn checkpoint: ask at 3 turns / realign at 7
 
-同一需求连续对话达到阈值仍未达预期时，强制停下做 checkpoint。
+When consecutive turns on the same request reach the threshold and expectations are still unmet, stop and run a checkpoint.
 
-## 3 回合检查点：停下来问
+## 3-turn checkpoint: stop and ask
 
-同一需求连续对话**超过 3 回合**且用户仍未明确表示满意（还在反复指出问题 / 反复修改 / 表达不满）→ 必须停下，用 `AskUserQuestion` 问清再继续。
+More than **3 consecutive turns** on the same request and the user still has not clearly signaled satisfaction (still repeatedly pointing out problems / repeatedly revising / expressing dissatisfaction) → you must stop and clarify with `AskUserQuestion` before continuing.
 
-问清方向：
+What to clarify:
 
-- 我当前理解的目标和你预期有哪些差别？
-- 过去几轮里我哪些具体判断走偏了？
-- 还缺什么信息我需要问你，才能把下一步做对？
+- How does the goal I currently understand differ from what you expect?
+- Which specific judgments of mine went off track in the past few turns?
+- What information am I still missing that I need to ask you, to get the next step right?
 
-## 7 回合检查点：对齐方向再调整
+## 7-turn checkpoint: realign the direction before adjusting
 
-若**超过 7 回合**仍未达到预期，从"盲目迭代"切到"重新对齐"：
+If expectations are still unmet after **more than 7 turns**, switch from "blind iteration" to "realignment":
 
-1. 回顾用户**原始需求**的文本
-2. 列出已尝试的方案 + 每个方案失败的具体原因
-3. 诊断根因：需求理解偏差 / 技术方案错 / 还是执行细节错？
-4. 用 `AskUserQuestion` 与用户对齐新方向和假设
-5. 对齐后再评估现有代码：哪些保留、哪些重写。**不要自动抛弃全部**；用户明确说"全部重来"时才整体重写
+1. Re-read the text of the user's **original request**
+2. List the approaches already tried + the specific reason each one failed
+3. Diagnose the root cause: misread requirement / wrong technical approach / wrong execution detail?
+4. Use `AskUserQuestion` to align the new direction and assumptions with the user
+5. After aligning, re-evaluate the existing code: what to keep, what to rewrite. **Do not discard everything automatically**; rewrite wholesale only when the user explicitly says "start over completely"
 
-编码任务走 `plan-first-delivery` 时，第 4–5 步落地为回到 DISCOVER/PLAN_READY 产出替代 plan，不另建第二套对齐流程。
+For coding tasks running `plan-first-delivery`, steps 4–5 land as going back to DISCOVER/PLAN_READY to produce a replacement plan; do not build a second alignment process.
 
-## 回合怎么数
+## How to count turns
 
-- 从用户**首次提出该需求**起算，不是 session 起点
-- 同一需求 = 没切换话题 / 没变更核心目标
-- 用户转到别的话题 → 计数归零
-- 1 个 user message + 1 个 agent 回应 = 1 回合
-- 用户说 "OK / 搞定 / 不用了" 等终止信号 → 本需求结束、不再计数
+- Count from when the user **first raised this request**, not from the session start
+- Same request = no topic switch / no change of core goal
+- The user moves to another topic → the counter resets to zero
+- 1 user message + 1 agent response = 1 turn
+- The user says "OK / done / never mind" or another stop signal → this request ends, stop counting
 
-## 不触发 checkpoint
+## Does not trigger a checkpoint
 
-- 用户已明示满意或完成
-- 同一需求里**微调**（追加小要求但核心目标没变）
-- 纯问答 / 解释类无目标收敛的对话
-- 用户明确说"继续试 / 多试几次"
+- The user has already signaled satisfaction or completion
+- **Minor tweaks** within the same request (small additions, core goal unchanged)
+- Pure Q&A / explanatory conversation with no goal to converge on
+- The user explicitly says "keep trying / try a few more times"

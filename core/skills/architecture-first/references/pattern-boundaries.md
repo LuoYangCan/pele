@@ -1,39 +1,39 @@
-# 行为与对象模式边界
+# Behavior and object pattern boundaries
 
-仅在 `architecture-first` 已确认存在未决 material choice，且差异主要来自行为、创建或适配方式时读取。局部分支、lint 或“以后可能扩展”不足以触发。
+Read only when `architecture-first` has already confirmed an unresolved material choice and the difference comes mainly from behavior, creation, or adaptation. A local branch, a lint finding, or "we might extend it later" is not enough to trigger it.
 
-## 先确定变化轴
+## Fix the axis of variation first
 
-| 变化轴 | 优先形态 | 不该升级的情况 |
+| Axis of variation | Preferred shape | When not to escalate |
 | --- | --- | --- |
-| 封闭且稳定的少量 case | `enum` + `switch` / table-driven dispatch | 分支只在一个现有 boundary 内 |
-| 同一动作有多个真实、可替换实现 | Strategy | 当前只有一个实现或差异只是参数 |
-| 行为由对象当前状态和合法迁移决定 | State / 显式状态机 | 独立 boolean 足以表达且无迁移不变量 |
-| 创建端必须隐藏多个具体实现 | Factory / registry | `init` 已经是唯一明显入口 |
-| 外部/旧接口与内部稳定契约不匹配 | Adapter | 只是无逻辑转发或不需要替换依赖 |
-| 正交能力需要独立组合 | Decorator / middleware | 能力互斥，或只会存在一层 |
-| 多个独立步骤需要插拔、重排或短路 | Pipeline / Chain | 步骤固定且共享大量中间状态 |
-| 一项事件有多个独立生命周期消费者 | Observer / event stream | 一对一同步调用即可表达 |
+| A closed, stable, small set of cases | `enum` + `switch` / table-driven dispatch | The branching stays inside one existing boundary |
+| One action has multiple real, swappable implementations | Strategy | There is only one implementation today, or the difference is just a parameter |
+| Behavior is decided by the object's current state and its legal transitions | State / explicit state machine | A standalone boolean expresses it and there is no transition invariant |
+| The creation site must hide multiple concrete implementations | Factory / registry | `init` is already the single obvious entry point |
+| An external/legacy interface does not match the stable internal contract | Adapter | It is logic-free forwarding, or the dependency never needs swapping |
+| Orthogonal capabilities must compose independently | Decorator / middleware | The capabilities are mutually exclusive, or there will only ever be one layer |
+| Multiple independent steps need to be pluggable, reordered, or short-circuited | Pipeline / Chain | The steps are fixed and share a lot of intermediate state |
+| One event has multiple consumers with independent lifecycles | Observer / event stream | A one-to-one synchronous call expresses it |
 
-## 决策约束
+## Decision constraints
 
-- 先沿用项目最近 precedent；除非它违反当前 invariant，不引入第二套模式。
-- 只有 seam 两侧具有不同变化节奏、多个实现、跨模块依赖或测试替换价值时才建 protocol/interface。
-- 一个调用方、一个实现、只 forward 的 wrapper 通常不是 seam。
-- 模式必须减少调用方知识或集中不变量；只增加类型和跳转层则拒绝。
-- 选择 State 时记录合法/非法迁移、状态 owner 和并发序列化点。
-- 选择 Observer/event stream 时记录订阅 owner、释放时机、顺序和错误传播。
-- 选择 Factory/registry 时记录注册 owner、缺失实现行为和可见范围。
-- 选择 Adapter 时内部契约应由业务需求决定，不照抄第三方 API。
+- Reuse the project's most recent precedent first; do not introduce a second pattern unless that precedent violates a current invariant.
+- Build a protocol/interface only when the two sides of the seam have different rates of change, multiple implementations, a cross-module dependency, or test-substitution value.
+- One caller, one implementation, a forward-only wrapper — usually not a seam.
+- A pattern must reduce caller knowledge or centralize an invariant; reject one that only adds types and indirection layers.
+- When choosing State, record legal/illegal transitions, the state owner, and the concurrency serialization point.
+- When choosing Observer/event stream, record the subscription owner, teardown timing, ordering, and error propagation.
+- When choosing Factory/registry, record the registration owner, missing-implementation behavior, and visibility scope.
+- When choosing Adapter, let business requirements decide the internal contract; do not copy the third-party API.
 
-## 最近候选比较
+## Nearest-candidate comparison
 
-只比较最接近的两个形态：
+Compare only the two closest shapes:
 
-- `switch` vs Strategy：case 是否开放增长，调用方是否需要替换实现；
-- Strategy vs State：差异来自调用意图，还是同一对象的当前状态；
-- direct call vs Observer：消费者是否确实多方且生命周期解耦；
-- direct dependency vs Adapter/port：依赖是否 volatile、跨边界或需要替身；
-- sequential function vs Pipeline：步骤是否独立、可组合且有稳定输入输出。
+- `switch` vs Strategy: do cases grow open-endedly, and does the caller need to swap implementations;
+- Strategy vs State: does the difference come from caller intent, or from the same object's current state;
+- direct call vs Observer: are consumers genuinely multiple and lifecycle-decoupled;
+- direct dependency vs Adapter/port: is the dependency volatile, cross-boundary, or in need of a test double;
+- sequential function vs Pipeline: are the steps independent, composable, and stable in input and output.
 
-把最终选择、最近被拒候选及测试边界写进 `architecture_decision`；不要生成模式教程或示例代码。
+Write the final choice, the nearest rejected candidate, and the test boundary into `architecture_decision`; do not produce pattern tutorials or example code.

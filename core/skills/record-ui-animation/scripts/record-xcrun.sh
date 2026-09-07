@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# record-ui-animation / Step B（唯一录屏路径，直接走 xcrun simctl）
+# record-ui-animation / Step B (the only recording path — straight to xcrun simctl)
 #
-# 不依赖任何 UI 交互工具——只管录屏本身。
-# 触发动画的动作（tap / type / swipe）caller 用 sim-use 另外驱动，跟这个脚本无关。
+# Depends on no UI interaction tool — this script only records.
+# The caller drives the animation-triggering actions (tap / type / swipe) separately via sim-use; that is outside this script.
 #
-# 用法：
-#   1. caller 在前台跑此脚本，脚本会 fork simctl io 到后台并打印 PID
-#   2. caller 拿 PID 自己驱动动画
-#   3. caller 调 stop-xcrun.sh 传 PID 结束录屏
+# Usage:
+#   1. The caller runs this script in the foreground; it forks simctl io into the background and prints the PID
+#   2. The caller takes that PID and drives the animation itself
+#   3. The caller calls stop-xcrun.sh with that PID to end the recording
 #
 # Inputs (env):
 #   DEVICE_UDID
@@ -26,21 +26,21 @@ if [[ ! "$RECORDING_PATH" =~ \.mp4$ ]]; then
   exit 1
 fi
 
-# h264 抽帧比 hevc 快一点 + 与 ffmpeg/videotoolbox 兼容性最佳。
-# 关键：把 simctl 的 stdout/stderr 重定向到 log 文件，**否则**当 caller
-# 用 `eval "$(record-xcrun.sh)"` 调本脚本时，simctl 后台进程会持有父 shell
-# 的 fd → command substitution 永远等不到 EOF、整段 eval 卡死。
+# h264 extracts frames a little faster than hevc and has the best ffmpeg/videotoolbox compatibility.
+# Critical: redirect simctl's stdout/stderr to a log file. Otherwise, when the caller
+# invokes this script as `eval "$(record-xcrun.sh)"`, the background simctl process holds the
+# parent shell's fd → the command substitution never sees EOF and the whole eval hangs.
 LOG_PATH="${RECORDING_PATH%.mp4}.simctl.log"
 xcrun simctl io "$DEVICE_UDID" recordVideo --codec=h264 --force "$RECORDING_PATH" \
   </dev/null >"$LOG_PATH" 2>&1 &
 REC_PID=$!
 disown 2>/dev/null || true
 
-# 等 simctl 写出 first frame 再返回（避免 caller 0 延迟点动作、漏掉头几帧）
+# Wait for simctl to write the first frame before returning, so a caller that acts with zero delay does not lose the opening frames
 sleep 0.6
 
 if ! kill -0 "$REC_PID" 2>/dev/null; then
-  echo "ERR_SIMCTL_DIED_EARLY: recordVideo 在第一帧前就退出 (log=${LOG_PATH})"
+  echo "ERR_SIMCTL_DIED_EARLY: recordVideo exited before the first frame (log=${LOG_PATH})"
   exit 1
 fi
 

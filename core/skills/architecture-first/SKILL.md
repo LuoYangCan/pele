@@ -5,71 +5,71 @@ description: "Resolve durable architecture boundaries inside the current Root's 
 
 # Architecture-first
 
-把本 skill 当作同一 Root 在 Plan/discovery 中按需使用的决策 lens。它不创建独立阶段、subagent、artifact、checklist 或确认回合。
+Treat this skill as a decision lens the same Root applies on demand inside Plan/discovery. It creates no separate phase, subagent, artifact, checklist, or confirmation round.
 
-## 入口判定
+## Entry test
 
-同时满足以下条件才进入架构选型：
+Enter architecture selection only when both hold:
 
-1. 用户明确要求重新设计，或最终 Plan、项目规则和最近 precedent 尚未给出唯一结构；
-2. 选择会长期改变至少一项契约：
-   - 模块/层 ownership 或依赖方向；
-   - public/跨模块 API、扩展点或多实现 seam；
-   - state source-of-truth、状态机或事件流；
-   - IO、副作用、持久化或外部系统边界；
-   - 多职责组件的拆分会跨越上述边界。
+1. The user explicitly asks for a redesign, or the final Plan, project rules and recent precedent do not yet pin down a single structure;
+2. The choice durably changes at least one contract:
+   - module/layer ownership or dependency direction;
+   - public/cross-module API, extension point, or multi-implementation seam;
+   - state source-of-truth, state machine, or event flow;
+   - IO, side-effect, persistence, or external-system boundary;
+   - splitting a multi-responsibility component across those boundaries.
 
-不因 private helper/type、新文件、局部分支/flag、copy-paste、TODO、fallback、局部 error handling、测试 seam、代码行数或 lint warning 触发。此类局部质量问题由 `lean-diff`、`lint-repair-strategy` 或 Root 的根因诊断处理。
+Does not trigger on private helpers/types, new files, local branches/flags, copy-paste, TODOs, fallbacks, local error handling, test seams, line count, or lint warnings. `lean-diff`, `lint-repair-strategy`, or Root's root-cause diagnosis handles such local quality issues.
 
-若结构已决，返回 `architecture_decision: not_needed — <project rule / precedent / final plan>` 后继续当前流程；不要为了证明“不需要复杂架构”再展开候选比较。
+If the structure is already settled, return `architecture_decision: not_needed — <project rule / precedent / final plan>` and continue the current flow; do not open a candidate comparison just to prove "no complex architecture is needed".
 
-## 证据预算
+## Evidence budget
 
-只验证会改变当前选择的事实：
+Verify only facts that would change the current choice:
 
-- 读取已命中的项目 invariant 或 final plan；
-- 用 `rg` 查看 affected boundary 的直接 callers/callees 和一个最近 precedent；
-- 仅在新增或替换 dependency 时读取 manifest；
-- prompt 中不影响选择的文件、符号和依赖不做全量 reality-check。
+- read the project invariant or final plan that was hit;
+- use `rg` to look at the affected boundary's direct callers/callees and one recent precedent;
+- read the manifest only when adding or replacing a dependency;
+- do not run a full reality-check on files, symbols, and dependencies in the prompt that do not affect the choice.
 
-发现用户描述与仓库不一致时，直接校准事实并继续。只有校准会改变可观察行为、scope、硬约束或验收时才询问用户。
+When the user's description disagrees with the repository, recalibrate the facts and continue. Ask the user only when the recalibration changes observable behavior, scope, hard constraints, or acceptance.
 
-## 决策轴
+## Decision axes
 
-依次回答三问：
+Answer three questions in order:
 
-1. `variation`：真实变化轴是什么，确有多个实现或长期扩展点吗？
-2. `state_ownership`：真相源、生命周期、并发与迁移由谁拥有？
-3. `dependency_and_effects`：依赖应指向哪边，volatile seam、IO 和副作用落在哪层？
+1. `variation`: what is the real axis of variation, and are there truly multiple implementations or a durable extension point?
+2. `state_ownership`: who owns the source of truth, lifecycle, concurrency, and migration?
+3. `dependency_and_effects`: which way should dependencies point, and in which layer do the volatile seam, IO, and side effects land?
 
-只在存在两个以上可行结构时按需读取一个 reference：
+Read one reference on demand only when more than one viable structure exists:
 
-- 行为/对象模式边界：`references/pattern-boundaries.md`
-- UI state/事件流边界：`references/ui-state-boundaries.md`
-- 模块/系统/副作用边界：`references/system-boundaries.md`
+- behavior/object pattern boundaries: `references/pattern-boundaries.md`
+- UI state/event-flow boundaries: `references/ui-state-boundaries.md`
+- module/system/side-effect boundaries: `references/system-boundaries.md`
 
-项目既有 shape 已满足约束时优先沿用，不读取百科式资料，不按行数或分支数机械套模式。
+When the project's existing shape already satisfies the constraints, reuse it; do not read encyclopedic material, and do not apply patterns mechanically by line or branch count.
 
-## 产出
+## Output
 
-仅在存在 material choice 时把下面内容直接合入最终 Plan；无最终 Plan 时作为当前 Root 的内联决策，不另建文件：
+Only when a material choice exists, merge the following straight into the final Plan; with no final Plan, keep it as the current Root's inline decision and create no separate file:
 
 ```yaml
 architecture_decision:
-  decision: <选择与责任边界>
-  evidence: [<2-3 条仓库事实>]
-  rejected_nearest_alternative: <最近候选及拒绝原因>
+  decision: <choice and responsibility boundary>
+  evidence: [<2-3 repository facts>]
+  rejected_nearest_alternative: <nearest candidate and why it was rejected>
   consequences:
-    affected_boundaries: [<模块/契约>]
-    migration: <迁移或兼容要求>
-    verification: <应证明的行为/边界>
+    affected_boundaries: [<module/contract>]
+    migration: <migration or compatibility requirement>
+    verification: <behavior/boundary to prove>
 ```
 
-Plan 已包含该决策时，Default implementation 直接消费，不再次调用本 skill。实施中发现新的 material boundary surprise 时暂停 writer，回到 discovery/Plan 更新决策；普通 review 发现明确边界违规时直接报 finding，只有修法仍存在未决架构选择才调用本 skill。
+When the Plan already carries the decision, Default implementation consumes it directly and does not invoke this skill again. If a new material boundary surprise appears during implementation, pause the writer and go back to discovery/Plan to update the decision; when ordinary review finds a clear boundary violation, report the finding directly — invoke this skill only when the fix still leaves an unresolved architecture choice.
 
-## 不做的事
+## Out of scope
 
-- 不直接写实现代码；
-- 不接管 anti-patch、复用、lint 或通用 correctness review；
-- 不新增批准点；只有选择改变用户行为、scope 或硬约束时沿主流程询问；
-- 不为沿用项目既有架构生成仪式性理由。
+- Does not write implementation code directly;
+- does not take over anti-patch, reuse, lint, or general correctness review;
+- adds no approval point; ask along the main flow only when the choice changes user-facing behavior, scope, or a hard constraint;
+- does not manufacture ceremonial justification for staying on the project's existing architecture.

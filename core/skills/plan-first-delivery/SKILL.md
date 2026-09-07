@@ -1,27 +1,27 @@
 ---
 name: plan-first-delivery
-description: Default mode 的写代码交付主流程。收到会落地 Edit / Write / NotebookEdit 的请求、执行同一任务里原生 Plan mode 已完成的最终 plan、修 bug、重构、加测试或实现 UI 时使用。Root（规划档强模型）负责 plan、决策、集成与客观验证，非平凡实现默认委派 `implementer`（实现档模型）；subagent 另用于独立调研与最终独立验收。不在原生 Plan mode、纯问答、只读诊断、查状态、meta 配置或 slash command 内触发。
+description: Main code-delivery flow for Default mode. Use when a request will land Edit / Write / NotebookEdit, when executing a final plan that native Plan mode already produced for the same task, and when fixing bugs, refactoring, adding tests or implementing UI. Root (planning-tier strong model) owns the plan, decisions, integration and objective verification; non-trivial implementation is delegated to `implementer` (implementation-tier model) by default; subagents are also used for independent research and final independent acceptance. Does not trigger inside native Plan mode, pure Q&A, read-only diagnosis, status queries, meta configuration or slash commands.
 ---
 
 # Plan-first delivery
 
-原生 Plan mode 负责把需求变成 decision-complete plan；Default mode 的同一 Root 承接交付，两者之间不再增加第二份计划、文件存在性 checkpoint 或固定角色流水线。模型分层：Root 以规划档强模型运行（Claude host: `/model fable`），负责 plan、共享决策、diff review、集成与验证；代码写入默认委派实现档模型的 `implementer`（模型见 `agents/implementer.md`）。
+Native Plan mode turns the requirement into a decision-complete plan; the same Root in Default mode takes over delivery. No second plan, file-existence checkpoint or fixed role pipeline is added between them. Model tiering: Root runs on the planning-tier strong model (Claude host: `/model fable`) and owns the plan, shared decisions, diff review, integration and verification; code writes are delegated by default to `implementer` on the implementation-tier model (model in `agents/implementer.md`).
 
-## 入口路由
+## Entry routing
 
-| 当前状态 | 处理 |
+| Current state | Handling |
 | --- | --- |
-| 原生 Plan mode | 不执行本 skill；保持只读，最终 plan 是同一任务的需求真相源 |
-| Default，用户明确要求执行同一任务的最终 plan | 直接进入执行；不重新规划、不复制成第二份计划文件 |
-| Default，目标窄且无会改变结果的决策 | 仅限微改动：单文件或少量行、无新可观察行为、实现唯一明确，或用户指令已具体到实现唯一确定且不引入新的可观察行为。只读确认入口和影响面；多步任务用 `update_plan`，随后实现。新功能、多文件改动、存在多种合理实现或行为变化，以及无法确定是否存在下一行任一类决策时，按下一行处理 |
-| Default，仍有产品行为、scope、架构、硬约束或验收决策 | 先用 `ToolSearch` 确认 `EnterPlanMode` 是否存在——它常是 deferred tool，不出现在已加载工具列表里，缺席不等于 host 不支持。存在则 Root 立即主动调用切入 Plan mode（用户拒绝后按只读 planning turn 处理），不要以「等用户手动切换」代替调用；确认不存在才由同一 Root 做只读 planning turn 并等明确执行授权 |
-| 用户明确要求 implementation worker | 把它视为实现委派；Root 仍负责边界、集成和最终验证 |
+| Native Plan mode | Do not run this skill; stay read-only. The final plan is the requirement source of truth for the same task |
+| Default, user explicitly asks to execute the same task's final plan | Go straight to execution; do not re-plan, do not copy it into a second plan file |
+| Default, narrow goal with no decision that would change the outcome | Micro-changes only: single file or few lines, no new observable behavior, one unambiguous implementation; or the user's instruction is already specific enough that the implementation is uniquely determined and introduces no new observable behavior. Confirm entry points and impact scope read-only; use `update_plan` for multi-step tasks, then implement. New features, multi-file changes, multiple reasonable implementations or behavior changes, and any case where you cannot tell whether a decision of the next row's kind exists, are handled by the next row |
+| Default, product behavior, scope, architecture, hard constraint or acceptance decisions remain | First use `ToolSearch` to confirm whether `EnterPlanMode` exists — it is often a deferred tool that does not appear in the loaded tool list, and its absence does not mean the host lacks support. If it exists, Root calls it immediately to enter Plan mode (after a user refusal, handle it as a read-only planning turn); do not substitute "wait for the user to switch manually" for the call. Only after confirming it does not exist does the same Root do a read-only planning turn and wait for explicit execution authorization |
+| User explicitly asks for an implementation worker | Treat it as an implementation delegation; Root still owns boundaries, integration and final verification |
 
-纯问答、只读诊断、状态查询、修改全局 rule / skill / hook / settings，以及 `/ship`、`/review`、`/pr-review` 的内部流程不触发。
+Pure Q&A, read-only diagnosis, status queries, changes to global rule / skill / hook / settings, and the internal flows of `/ship`, `/review`, `/pr-review` do not trigger.
 
-`update_plan` 只显示执行进度，不是 Plan mode，也不承载需求真相。
+`update_plan` only shows execution progress; it is not Plan mode and does not carry requirement truth.
 
-## 状态机
+## State machine
 
 ```text
 DISCOVER (Plan/read-only)
@@ -39,116 +39,116 @@ EXECUTE + local implementation complete
   → COMPLETE
 ```
 
-Root 始终拥有用户交互、最终 plan、共享决策、主工作区集成、失败路由和最终汇报。
+Root always owns user interaction, the final plan, shared decisions, main-workspace integration, failure routing and the final report.
 
-## 开始实现前
+## Before implementation starts
 
-1. 确认用户已授权当前实现；Plan mode 的最终 plan 只有在用户切回 Default 并要求执行后才算本地、可逆源码改动的实施授权。
-2. 要落地 Edit/Write 且当前不在隔离 worktree 时，先加载 `use-worktree`；已在 worktree 内延续当前任务时跳过。meta 配置按 AGENTS 的独立 branch/worktree 路由处理。
-3. 记录 `base_ref="$(git rev-parse HEAD)"`，检查 dirty tree，保护用户已有改动。
-4. 项目 AGENTS/CLAUDE 已在 context 时直接检查 trigger 标记，否则读取；存在 trigger-on-touch 标记时加载 `scan-trigger-docs`。
-5. 加载本次真正命中的架构、语言、Figma、文档或平台 skill。项目规则、precedent 或 authoritative final plan 已明确结构时不再加载 `architecture-first`；仅实施中出现未决的 material boundary surprise 时回到 discovery/Plan 决策。
-6. 非平凡代码写入，以及任意规模但拟新增或扩大 validation/error handling/fallback 的写入，都须在首次 Edit 前加载 `lean-diff` 并冻结 prompt 字段 `validation_fallback_contract`；只有已确认不触及这些语义的微改动可跳过。默认值为 `NONE`；新 validation 只有能由用户/最终 plan、项目规则、权威外部契约或复现证据证明必要时才能列入。fallback 还必须由用户/最终 plan、项目规则或权威产品契约明确授权；失败 trace 只能证明故障，不能授权降级。每项写 `site/kind`、`evidence`、`invariant_owner`；fallback 另写 `degraded_result` 与 `recovery_or_failure_owner`。只有故障证据而无授权时，停在首次 Edit 前，由 Root 向用户展示 `fallback_proposal`：触发证据、不兜底的结果、拟议降级、数据/语义损失、恢复或失败 owner；默认建议不加，只有用户明确选择才能更新合同，未回复不算授权。该字段不是新计划或落盘工件。
-7. 只有命中 `exec-plan` 的持久化边界时才写单文件 ExecPlan；同一 Root、同一任务、一次可完成的实现不落计划文件。
+1. Confirm the user has authorized the current implementation; a Plan mode final plan counts as implementation authorization for local, reversible source changes only after the user switches back to Default and asks to execute.
+2. When an Edit/Write will land and you are not in an isolated worktree, load `use-worktree` first; skip it when continuing the current task already inside a worktree. Meta configuration follows AGENTS' separate branch/worktree routing.
+3. Record `base_ref="$(git rev-parse HEAD)"`, check for a dirty tree, and protect the user's existing changes.
+4. If the project AGENTS/CLAUDE is already in context, check its trigger markers directly; otherwise read it. Load `scan-trigger-docs` when trigger-on-touch markers exist.
+5. Load the architecture, language, Figma, documentation or platform skills this task actually hits. Do not load `architecture-first` when project rules, precedent or the authoritative final plan already settle the structure; return to a discovery/Plan decision only when an unresolved material boundary surprise appears during implementation.
+6. Non-trivial code writes, and writes of any size that would add or widen validation/error handling/fallback, must load `lean-diff` and freeze the prompt field `validation_fallback_contract` before the first Edit; only micro-changes confirmed not to touch these semantics may skip it. The default value is `NONE`; new validation may be listed only when the user/final plan, project rules, an authoritative external contract or reproduction evidence proves it necessary. A fallback must in addition be explicitly authorized by the user/final plan, project rules or an authoritative product contract; a failure trace only proves a fault, it cannot authorize degrading. Each entry writes `site/kind`, `evidence`, `invariant_owner`; a fallback also writes `degraded_result` and `recovery_or_failure_owner`. With fault evidence but no authorization, stop before the first Edit and have Root show the user a `fallback_proposal`: the triggering evidence, the result without a fallback, the proposed degradation, the data/semantic loss, and the recovery-or-failure owner; the default recommendation is not to add it, only an explicit user choice may update the contract, and no reply is not authorization. This field is not a new plan or an on-disk artifact.
+7. Write a single-file ExecPlan only when the persistence boundary of `exec-plan` is hit; an implementation that one Root can finish in one pass on one task does not land a plan file.
 
-## 正交 gates
+## Orthogonal gates
 
-分别判断以下 gate；一个任务可命中零个或多个：
+Judge each gate below separately; one task may hit zero or more:
 
-| Gate | 触发 |
+| Gate | Triggers |
 | --- | --- |
-| `needs_worktree` | 要落地源码写入且当前不在隔离 worktree |
-| `needs_durable_plan` | 跨会话/host、多个 writer/worktree、不可逆迁移、长期 Goal、审计或用户要求计划文件 |
-| `needs_parallel_write` | 至少两个写域互斥的实现单元，并行能明显缩短关键路径 |
-| `needs_independent_review` | 用户要求独立/完整验收；或最终 diff 涉及认证权限、PII/安全、支付、持久化/schema/迁移、公共 API/跨模块契约、并发/缓存一致性、大范围架构边界；多个 writer 合并后也触发 |
-| `needs_ui_review` | Figma handoff、动画、复杂 UI、主观视觉判断或用户明确要求 UI 验收 |
-| `needs_explicit_approval` | 删除/覆盖数据、不可逆迁移、外部发布/消息/写入等需要新增权限的动作 |
+| `needs_worktree` | A source write will land and you are not in an isolated worktree |
+| `needs_durable_plan` | Cross-session/host, multiple writers/worktrees, irreversible migration, long-lived Goal, audit, or the user asks for a plan file |
+| `needs_parallel_write` | At least two implementation units with mutually exclusive write domains, where parallelism clearly shortens the critical path |
+| `needs_independent_review` | The user asks for independent/full acceptance; or the final diff touches auth/permissions, PII/security, payments, persistence/schema/migration, public API/cross-module contracts, concurrency/cache consistency, or broad architecture boundaries; merging multiple writers also triggers it |
+| `needs_ui_review` | Figma handoff, animation, complex UI, subjective visual judgment, or the user explicitly asks for UI acceptance |
+| `needs_explicit_approval` | Actions requiring new permission, such as deleting/overwriting data, irreversible migration, external publishing/messaging/writes |
 
-需求歧义在 Plan mode 已解决后，不因“曾经有歧义”自动触发独立 review。Figma 只自动触发 UI gate；除非同时命中语义风险，不再启动另一套完整流水线。
+Once requirement ambiguity is resolved in Plan mode, "it was ambiguous once" does not auto-trigger independent review. Figma auto-triggers only the UI gate; unless a semantic risk is hit at the same time, do not start a second full pipeline.
 
-### 独立 review 的强度
+### Strength of independent review
 
-- `mandatory-risk`：认证/权限、PII/安全、支付、schema/持久化/迁移、公共 API/跨模块契约、并发/缓存一致性、大范围架构边界，以及多个 writer 的 fan-in。客观验证 PASS 后必须由 fresh、read-only verifier 验收；没有该能力时阻塞完成，Root 自审不能替代。
-- `optional-requested`：任务本身没有上述风险，只因用户主动要求独立/完整验收而启用。用户随后可明确撤销。
-- “不用 review / 我自己看”只撤销 `optional-requested`。若用户要豁免 `mandatory-risk`，Root 必须先列出具体未独立验收的风险并取得针对该风险的明确接受；更高层安全规则不允许豁免时仍阻塞。
+- `mandatory-risk`: auth/permissions, PII/security, payments, schema/persistence/migration, public API/cross-module contracts, concurrency/cache consistency, broad architecture boundaries, and fan-in from multiple writers. After objective verification PASSes, a fresh, read-only verifier must do the acceptance; without that capability, completion is blocked, and Root self-review is no substitute.
+- `optional-requested`: the task itself carries none of the above risks and is enabled only because the user asked for independent/full acceptance. The user may explicitly revoke it later.
+- "No review / I'll look at it myself" revokes only `optional-requested`. If the user wants to waive `mandatory-risk`, Root must first list the specific risks left without independent acceptance and obtain explicit acceptance of those risks; when a higher-level safety rule forbids the waiver, it stays blocked.
 
-### 实施授权与动作授权
+### Implementation authorization and action authorization
 
-Plan 接受、切回 Default 或“Implement”只授权当前 scope 内的本地、可逆源码/文档修改和计划内验证，不授权真实数据迁移、删除/覆盖数据、生产发布、外部消息或其他不可逆/外部写入。
+Accepting a plan, switching back to Default, or saying "Implement" authorizes only local, reversible source/doc changes within the current scope plus the planned verification. It does not authorize real data migration, deleting/overwriting data, production release, external messaging or any other irreversible/external write.
 
-每个 `needs_explicit_approval` 动作必须在执行前即时停在 `AWAIT_ACTION_APPROVAL`：解析准确目标，说明影响、备份/恢复或 rollback、是否可 dry-run，并请求该动作的明确授权。授权只覆盖所述目标、参数和当时状态的一次执行；目标、影响或动作变化后重新确认。没有授权时不得先做副作用再补问。
+Every `needs_explicit_approval` action must stop at `AWAIT_ACTION_APPROVAL` immediately before execution: resolve the exact target, state the impact, backup/restore or rollback, and whether a dry-run is possible, then request explicit authorization for that action. The authorization covers one execution against the stated target, parameters and state at that time; re-confirm after the target, impact or action changes. Without authorization, never perform the side effect first and ask afterwards.
 
-## 执行与委派
+## Execution and delegation
 
-### 默认：委派 implementer 实现
+### Default: delegate implementation to implementer
 
-1. 多步任务用 `update_plan` 维护 2–6 个结果导向步骤；单步改动不用计划 UI。
-2. decision-complete 的实现默认交给 `implementer`：prompt 写清目标与完成条件、独占 ownership 与禁止触达范围、已冻结共享接口、`validation_fallback_contract`、必读项目文档、返回格式和允许的窄域检查（同 `parallel-subagents` 分派前冻结）。
-3. Root 直接写的例外：单文件、无决策的微改动，集成级修正，验证失败的窄修，以及 host 无 subagent（此时 Root 串行实现）。Root 直接写也受同一 `validation_fallback_contract` 约束；共享清单、公共接口和最终合并文件始终由 Root 写。
-4. worker 返回后，Root 检查实际 diff、越界写入、共享接口、用户已有改动，以及新增 validation/fallback 与合同逐项一致；未列入的本任务新增代码必须移除，或带证据回到 discovery，Root 不得事后自行补授权。完成必要集成修正后再进入统一验证；worker 的局部检查不能替代最终集成验证。
-5. 用户追加局部实现细节时更新 execution checklist 后继续；不创建 amendment/status 文件。
-6. 用户改变可观察行为、scope、架构、硬约束或验收标准时，暂停 writer，保留当前 diff，回到 DISCOVER/PLAN_READY 产出替代 plan；不要擅自回滚用户改动。替代 plan 必须完整复述此前已积累的用户实质决策，不能只写增量；已有 ExecPlan 时按 `exec-plan` 更新规则同步。
+1. For multi-step tasks maintain 2–6 outcome-oriented steps with `update_plan`; single-step changes do not use the plan UI.
+2. A decision-complete implementation goes to `implementer` by default: the prompt states the goal and completion conditions, exclusive ownership and the off-limits scope, the frozen shared interfaces, `validation_fallback_contract`, the project docs that must be read, the return format, and the permitted narrow-scope checks (frozen before dispatch, as in `parallel-subagents`).
+3. Exceptions where Root writes directly: single-file, decision-free micro-changes; integration-level fixes; narrow fixes for verification failures; and hosts with no subagent (Root then implements serially). Root's direct writes are bound by the same `validation_fallback_contract`; shared manifests, public interfaces and final merged files are always written by Root.
+4. After a worker returns, Root checks the actual diff, out-of-bounds writes, shared interfaces, the user's existing changes, and that added validation/fallback matches the contract item by item; code this task added but did not list must be removed, or go back to discovery with evidence — Root may not grant the authorization itself after the fact. Enter unified verification only after the necessary integration fixes; a worker's local checks are no substitute for final integration verification.
+5. When the user adds local implementation details, update the execution checklist and continue; do not create amendment/status files.
+6. When the user changes observable behavior, scope, architecture, hard constraints or acceptance criteria, pause the writer, keep the current diff, and return to DISCOVER/PLAN_READY to produce a replacement plan; do not roll back the user's changes on your own. The replacement plan must restate in full every substantive user decision accumulated so far, not just the delta; when an ExecPlan exists, sync it per the `exec-plan` update rules.
 
-### 并行委派
+### Parallel delegation
 
-命中 `needs_parallel_write` 时加载 `parallel-subagents`，把互斥写域交给多个 `implementer` 实例；每个 worker 必须知道其他 writer 同时存在，不得回退或覆盖他人改动。返回处理同上第 4 条。
+When `needs_parallel_write` is hit, load `parallel-subagents` and hand mutually exclusive write domains to several `implementer` instances; every worker must know other writers exist concurrently and must not revert or overwrite their changes. Handle returns as in item 4 above.
 
-### 增量 commit
+### Incremental commits
 
-- 每完成一个可独立验证的功能单元（实现完成且该单元的窄域检查通过）后，Root 即在任务 worktree 内按 `rules/commit-message.md` commit 一次，不把多个功能攒到任务收尾。
-- 只 stage 本单元的明确路径；不卷入用户已有改动，`.reviews/`、`.specs/` 工件不提交。worker 仍不 commit，其 diff 由 Root 集成检查后提交。
-- 中间态或验证失败不 commit；最终统一验证后的修复以后续 commit 落盘。push 和 PR 仍只在用户要求或 `/ship` 时发生。
+- After each independently verifiable feature unit is done (implementation complete and that unit's narrow-scope checks pass), Root commits once inside the task worktree per `rules/commit-message.md`, instead of saving several features up for the end of the task.
+- Stage only this unit's explicit paths; do not sweep in the user's existing changes, and do not commit `.reviews/` or `.specs/` artifacts. Workers still do not commit; their diffs are committed by Root after the integration check.
+- Do not commit intermediate states or failed verification; fixes made after the final unified verification land as follow-up commits. Push and PR still happen only on user request or `/ship`.
 
-## 轻量自作主张审计
+## Lightweight judgment-call audit
 
-`<repo-or-worktree>/.reviews/自作主张.md` 是本地、append-only 的实现判断日志，不是需求真相源，也不能代替用户授权。
+`<repo-or-worktree>/.reviews/judgment-calls.md` is a local, append-only log of implementation judgments. It is not a requirement source of truth and does not replace user authorization.
 
-- 用户、最终 plan、项目规则或直接 precedent 未决定，且存在两个以上合理实现时，Root 先判断该选择是否 material。改变可观察行为、scope、架构、硬约束或验收标准，以及新增会改变语义或丢数据的 fallback、默认值、转换、跳过或丢弃，都必须停下询问用户或回到 Plan；不得记一笔后继续。拿不准是否 material 时按 material 处理。
-- 非 material、可逆且不改变业务语义的实现判断可以继续，但须在完成前追加一条（在派发 review 前或 review 返回后写，不在冻结窗口内写）；没有这类判断时不创建文件。机械命名、格式和已有规则唯一确定的实现不记录。
-- 每条只写 `决定`、`依据`、`影响与回滚`，标题使用 `## YYYY-MM-DD HH:MM — <task>`；旧条目不得修改或删除。
-- 日志只由 Root 写。worker 返回需要 Root 拍板的候选判断，不能直接写共享日志。
+- When the user, the final plan, project rules or direct precedent have not decided, and more than one reasonable implementation exists, Root first judges whether the choice is material. Anything that changes observable behavior, scope, architecture, hard constraints or acceptance criteria, and any added fallback, default, conversion, skip or discard that changes semantics or loses data, must stop to ask the user or return to Plan; do not log an entry and continue. When unsure whether it is material, treat it as material.
+- A non-material, reversible implementation judgment that does not change business semantics may continue, but must be appended as one entry before completion (write it before dispatching review or after review returns, never inside the freeze window); when there are no such judgments, do not create the file. Mechanical naming, formatting and implementations uniquely determined by existing rules are not logged.
+- Each entry writes only `Decision`, `Rationale`, `Impact and rollback`, with the heading `## YYYY-MM-DD HH:MM — <task>`; old entries must not be modified or deleted.
+- Only Root writes the log. Workers return candidate judgments for Root to decide; they must not write the shared log directly.
 
-`.reviews/` 属于本地交付工件，`/ship` 不得暂存或提交。最终回复没有条目时明确写“自作主张：无”；有条目时汇总决定并给出日志绝对路径。
+`.reviews/` is a local delivery artifact; `/ship` must not stage or commit it. When the final reply has no entries, state explicitly "Judgment calls: none"; when there are entries, summarize the decisions and give the log's absolute path.
 
-项目 AGENTS 指定了等价本地审计载体（如迭代日志）时，用项目路径替代默认文件；三字段与 append-only 约定不变。
+When the project AGENTS designates an equivalent local audit carrier (such as an iteration log), use the project path instead of the default file; the three fields and the append-only convention are unchanged.
 
-## 文档影响
+## Documentation impact
 
-最终验证前检查实际 diff 是否改变 agent 需要长期知道的工作流、模块边界、项目结构、工具链、公共契约或反直觉约束。命中时加载 `agent-readable-docs` 更新对应项目文档；普通产品/UI/局部 bugfix 不为“留痕”强行写文档。
+Before final verification, check whether the actual diff changes the workflow, module boundaries, project structure, toolchain, public contracts or counter-intuitive constraints that agents need to know long-term. On a hit, load `agent-readable-docs` and update the corresponding project docs; ordinary product/UI/local bugfixes do not force doc writes just to leave a trace.
 
-最终汇报的文档处置二选一：`NONE + 具体依据`（说明 diff 为何不含长期约束变化）或 `UPDATED + 路径列表`（路径须出现在 `git diff --name-only $base_ref` 或 untracked 清单中）。
+The final report's doc disposition is one of two: `NONE + specific rationale` (why the diff contains no long-term constraint change) or `UPDATED + path list` (paths must appear in `git diff --name-only $base_ref` or the untracked list).
 
-## 验证
+## Verification
 
-按 `rules/post-change-verify.md` 对最终候选源码执行一次相关验证。Root 可直接运行；命令很长、日志很大或只需机械结果时交给 `command-runner`（host 无此 agent 时由 Root 直接执行）。客观命令无需另起独立验证角色。
+Run one round of relevant verification on the final candidate source per `rules/post-change-verify.md`. Root may run it directly; hand it to `command-runner` when the command is long, the log is large, or only a mechanical result is needed (Root runs it directly on hosts without that agent). Objective commands do not need a separate verification role.
 
-验证失败时：
+When verification fails:
 
-- 实现问题：Root 直接窄修，大范围返工带失败证据重派 `implementer`；失效重跑细则见 `rules/post-change-verify.md` 失败路由；
-- 环境/依赖问题：先做安全诊断，不能把它伪装成代码失败或交给新 writer 重写；
-- 相同诊断连续两次没有进展：停止盲修，回到 Plan 或询问用户；回 Plan 后恢复执行仍需用户明确执行授权。同一 required gate 累计 FAIL 达 4 次（无论诊断是否更换）必须询问用户。
+- Implementation problem: Root fixes narrowly and directly; large-scale rework is re-dispatched to `implementer` with the failure evidence; for the stale-rerun details see the failure routing in `rules/post-change-verify.md`;
+- Environment/dependency problem: diagnose safely first; do not disguise it as a code failure or hand it to a new writer to rewrite;
+- Two consecutive rounds of the same diagnosis with no progress: stop blind fixing and return to Plan or ask the user; resuming execution after returning to Plan still needs explicit user execution authorization. When the same required gate accumulates 4 FAILs (whether or not the diagnosis changed), you must ask the user.
 
-## 条件式验收路由
+## Conditional acceptance routing
 
-`needs_independent_review` 或 `needs_ui_review` 命中时，在客观验证 PASS 后先全文读取 [references/review-binding.md](references/review-binding.md)（候选身份冻结、fingerprint 绑定、verifier / UI reviewer 启动与失效规则），再启动对应验收。mandatory-risk 不可由 Root 自审替代；豁免须按「独立 review 的强度」逐项风险取得用户明确接受。
+When `needs_independent_review` or `needs_ui_review` is hit, after objective verification PASSes read [references/review-binding.md](references/review-binding.md) in full (candidate identity freeze, fingerprint binding, verifier / UI reviewer launch and invalidation rules) before starting the corresponding acceptance. mandatory-risk cannot be replaced by Root self-review; a waiver requires explicit per-risk user acceptance per "Strength of independent review".
 
 ## Host fallback
 
-- Codex / Claude 有原生 Plan：使用原生模式和原生提问工具；不要用 `update_plan` 冒充 Plan mode。
-- 无原生 Plan：同一 Root 只读探索、给出 final plan，等用户明确 GO 后再写。
-- 无 subagent：Root 串行执行；若独立 review 是硬门且没有 fresh reviewer 能力，明确报告阻塞，不能把自审标成独立验收。
-- 非交互/无人值守 session：到达 WAIT_INPUT、PLAN_READY、AWAIT_ACTION_APPROVAL 或 mandatory-risk 阻塞，且本 session 无法取得用户输入时，输出最终 plan/待批动作清单并以 blocked 状态结束；不得自行视为已授权。
-- 工具名差异只影响 adapter，不改变状态机和 gate。
+- Codex / Claude have a native Plan: use the native mode and native question tools; do not pass `update_plan` off as Plan mode.
+- No native Plan: the same Root explores read-only, gives a final plan, and writes only after an explicit user GO.
+- No subagent: Root executes serially; if independent review is a hard gate and no fresh reviewer capability exists, report the block explicitly and do not label self-review as independent acceptance.
+- Non-interactive/unattended session: on reaching WAIT_INPUT, PLAN_READY, AWAIT_ACTION_APPROVAL or a mandatory-risk block with no way to obtain user input in this session, output the final plan / pending-approval action list and end in blocked state; never treat it as authorized on your own.
+- Tool-name differences affect only the adapter; they do not change the state machine or the gates.
 
-## 用户覆盖
+## User overrides
 
-- “直接改 / 不用 Plan” → 在 Default mode 且目标足够明确时直接执行，验证不省略。
-- “自己写 / 不用 worker” → Root 直接实现整段任务，集成与验证不变。
-- “完整验收 / 独立验收” → 启用独立 verifier。
-- “不用 review / 我自己看” → 只跳过 `optional-requested`；`mandatory-risk` 按上面的具体风险接受规则处理，动作权限确认始终独立。
+- "Just change it / no Plan" → execute directly when in Default mode and the goal is clear enough; verification is not skipped.
+- "Write it yourself / no worker" → Root implements the whole task directly; integration and verification are unchanged.
+- "Full acceptance / independent acceptance" → enable an independent verifier.
+- "No review / I'll look at it myself" → skip only `optional-requested`; `mandatory-risk` follows the specific risk-acceptance rule above, and action-permission confirmation stays separate throughout.
 
-## 完成条件
+## Completion conditions
 
-最终回复必须独立说明：完成的可观察行为、主要改动、实际运行的验证及结果、独立/UI 验收是否触发、自作主张审计、文档处置和未验证项/剩余风险。没有 PASS 证据时不要称为完成。
+The final reply must state separately: the observable behavior delivered, the main changes, the verification actually run and its results, whether independent/UI acceptance triggered, the judgment-call audit, the doc disposition, and unverified items / remaining risks. Do not call it complete without PASS evidence.
 
-未触发或为空的项可合并为一行简报（如“独立/UI 验收：未触发；自作主张：无；文档：NONE（无长期约束变化）”）。单文件、行为符合用户显式要求，且 needs_independent_review / needs_ui_review / needs_durable_plan / needs_explicit_approval 均未命中、无自作主张条目、文档处置为 NONE 的微改动：只须说明改动内容、实际运行的验证及结果、剩余风险，外加“自作主张：无”；其余项仅在触发时报告。
+Items not triggered or empty may be merged into a one-line brief (e.g. "Independent/UI acceptance: not triggered; judgment calls: none; docs: NONE (no long-term constraint change)"). For a micro-change that is single-file, whose behavior matches an explicit user request, where needs_independent_review / needs_ui_review / needs_durable_plan / needs_explicit_approval are all unhit, with no judgment-call entries and doc disposition NONE: state only the change, the verification actually run and its results, and remaining risks, plus "Judgment calls: none"; report the rest only when triggered.
