@@ -1,34 +1,34 @@
-# iOS 列表容器选型：重复同类条目默认虚拟化
+# iOS list container choice: virtualize repeated homogeneous items by default
 
-iOS 端「重复的同类条目集合」（滚动列表 / 表格）一律默认用虚拟化容器：`UICollectionView` / `UITableView` / SwiftUI `List` / `LazyVStack`。**不要**用「数据现在有界 / 无界」来判断能不能用 `UIStackView`。
+On iOS, a "collection of repeated homogeneous items" (scrolling list / table) always defaults to a virtualized container: `UICollectionView` / `UITableView` / SwiftUI `List` / `LazyVStack`. **Do not** use "is the data bounded or unbounded right now" to decide whether `UIStackView` is acceptable.
 
-## 触发
+## Triggers
 
-写 / 重构 iOS list UI —— 任何会滚动的同类条目集合（feed / 列表 / 表格 / 分组列表）。
+Writing / refactoring iOS list UI — any scrolling collection of homogeneous items (feed / list / table / sectioned list).
 
-## 不触发
+## Does not trigger
 
-- cell 内部的多行组合 / tag-chip 流式排列 / 按钮组（容器嵌在已虚拟化的 cell 里）
-- 字段或 section 固定的详情页 / 表单（重复的是异构 section、不是同类条目，整页可滚动也 OK）
-- macOS（本规则只约束 iOS）
+- Multi-row composition inside a cell / tag-chip flow layout / button groups (the container is nested inside an already virtualized cell)
+- Detail pages / forms with a fixed set of fields or sections (what repeats is heterogeneous sections, not homogeneous items; a fully scrolling page is fine)
+- macOS (this rule constrains iOS only)
 
-## 规则
+## Rules
 
-- **重复同类条目集合 → 虚拟化容器**（collectionView / tableView / List / LazyVStack），默认就这么选、第一版就做
-- **固定异构组合 → `UIStackView` / `ScrollView+VStack`**
+- **Repeated homogeneous item collection → virtualized container** (collectionView / tableView / List / LazyVStack), chosen by default, in the first version
+- **Fixed heterogeneous composition → `UIStackView` / `ScrollView+VStack`**
 
-判据是**形态**、不是数据量：重复同类 → 虚拟化；固定异构 → stack/VStack。
+The criterion is **shape**, not data volume: repeated homogeneous → virtualized; fixed heterogeneous → stack/VStack.
 
-## 禁止
+## Forbidden
 
-- ❌ 用 `UIStackView` 全量 `addArrangedSubview` 渲染滚动同类列表，再手动加 cap / collapse「为了渲染不卡」—— 这等于坐实了它该是列表容器（纯 IA 的 top-N 摘要预览除外）
-- ❌ 用「现在数据不多 / 有界」论证 stackView —— 界会随需求漂移、client 代码不动就能从有界变无界，没人会回头重选容器
+- ❌ Rendering a scrolling homogeneous list by `addArrangedSubview`-ing everything into a `UIStackView`, then hand-adding a cap / collapse "so it does not stutter" — that only confirms it should have been a list container (a pure-IA top-N summary preview is the exception)
+- ❌ Arguing for stackView from "there is not much data now / it is bounded" — the bound drifts with requirements, it can go from bounded to unbounded without the client code changing, and nobody comes back to re-pick the container
 
-## Why（核心）
+## Why (core)
 
-成本不对称：upfront 用虚拟化容器只多点模板；猜成 stackView 猜错 = 线上 perf cliff + 事后迁移（还要补 diffable / cell 复用）。一开始就为性能考虑、把成本放第一版。
+Asymmetric cost: choosing a virtualized container upfront only costs a bit more boilerplate; guessing stackView and guessing wrong = a production perf cliff + an after-the-fact migration (which also has to add diffable / cell reuse). Design for performance from the start; pay the cost in the first version.
 
-## 关联
+## Related
 
-- reviewer 的性能反模式检查（`~/.claude/commands/review.md` 正确性 reviewer 第 7 条 iOS 性能反模式，建议层 / 非阻断）按本规则 flag
-- 反例参考：<TasksModule> `TasksDoneVC`（翻页累积进 stackView + collapse-5 压不住 section 张数膨胀）
+- The reviewer's performance anti-pattern check (`~/.claude/commands/review.md`, correctness reviewer item 7, iOS performance anti-patterns; advisory / non-blocking) flags against this rule
+- Counter-example: <TasksModule> `TasksDoneVC` (paging accumulates into a stackView + collapse-5 cannot contain the growth in section count)

@@ -2,9 +2,9 @@
 # record-ui-animation / Step A: prepare
 #
 # Inputs (env, required):
-#   WORKTREE_SLUG    task slug / worktree 名（caller 从 Root 拿）
-#   CASE_SLUG        动画用例短名（kebab-case，决定 frame 子目录）
-#   DEVICE_UDID      iOS Simulator UDID 或 Android adb device id
+#   WORKTREE_SLUG    task slug / worktree name (the caller gets it from Root)
+#   CASE_SLUG        short name for the animation case (kebab-case; decides the frame subdirectory)
+#   DEVICE_UDID      iOS Simulator UDID or Android adb device id
 #
 # Inputs (env, optional):
 #   PLATFORM=ios|android       (default: ios)
@@ -23,7 +23,7 @@
 #   ERR_FFMPEG_NOT_FOUND
 #   ERR_SIM_NOT_BOOTED:<udid> state=<state>
 #   ERR_ADB_DEVICE_OFFLINE:<udid> state=<state>
-#   ERR_BAD_SLUG:<slug>   slug 含非法字符
+#   ERR_BAD_SLUG:<slug>   slug contains illegal characters
 
 set -euo pipefail
 

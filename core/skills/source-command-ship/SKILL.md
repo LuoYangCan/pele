@@ -71,7 +71,7 @@ git rebase origin/dev
 
 On conflict, stop and report conflicted paths. Never resolve by discarding user work.
 
-After rebase, run the repository's standard cheap check before push. For `某 iOS monorepo`:
+After rebase, run the repository's standard cheap check before push. For `an iOS monorepo`:
 
 ```bash
 just check

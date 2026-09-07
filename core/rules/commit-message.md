@@ -1,20 +1,20 @@
-# Commit Message 风格
+# Commit message style
 
-- Conventional commits：`type(scope): description`
-- 单行、简短，只写"做了什么"。原因 / 背景 / 动机留给 PR 描述
-- 多数情况用 `git commit -m "..."` 一行搞定；只在加 Co-Authored-By trailer 时用 HEREDOC
+- Conventional commits: `type(scope): description`
+- One line, short, saying only "what was done". Reason / background / motivation belong in the PR description
+- Most of the time a single `git commit -m "..."` line does it; use a HEREDOC only when adding a Co-Authored-By trailer
 
-## Co-Authored-By trailer 按仓库区分
+## The Co-Authored-By trailer depends on the repo
 
-每次 commit 前看 `git remote get-url origin` 的 owner：
+Before every commit, look at the owner in `git remote get-url origin`:
 
-- **个人 / 公开作品仓库**（你自己的 GitHub username 下、开源 harness、个人 side project）→ **加 trailer**
-- **公司 / 团队协作仓库**（公司 organization 下、闭源项目、多人协作私仓）→ **不加**
-- **不确定 / 没有 origin / fork 关系不清** → **不加**（保守默认）
+- **Personal / public work repo** (under your own GitHub username, an open-source harness, a personal side project) → **add the trailer**
+- **Company / team repo** (under a company organization, closed-source projects, multi-person private repos) → **do not add it**
+- **Unsure / no origin / unclear fork relationship** → **do not add it** (conservative default)
 
-## 写法
+## How to write it
 
-加 trailer：
+With the trailer:
 
 ```bash
 git commit -m "$(cat <<'EOF'
@@ -25,14 +25,14 @@ EOF
 )"
 ```
 
-trailer 前必须有一空行（Git trailer 标准）。
+There must be a blank line before the trailer (the Git trailer standard).
 
-不加 trailer：
+Without the trailer:
 
 ```bash
 git commit -m "feat(scope): description"
 ```
 
-## 已有 commit 不补
+## Do not backfill existing commits
 
-forward-looking 生效。已 push 的 commit **不**做 history rewrite 补 trailer。
+Forward-looking only. Do **not** rewrite history to add the trailer to commits that are already pushed.

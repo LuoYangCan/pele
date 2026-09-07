@@ -1,118 +1,118 @@
 ---
 name: figma-precise-extract
-description: 从 Figma 设计稿提取 measurement-grade 精确尺寸、间距和 token。Use when：strict Figma→code 任务要冻结实现输入，或排查图标/间距偏差。Skip when：无 Figma 设计稿、非 UI 改动、用户选择 loose 严格度。
+description: Extract measurement-grade exact sizes, spacing and tokens from a Figma design. Use when: a strict Figma→code task needs to freeze implementation inputs, or when diagnosing icon/spacing drift. Skip when: no Figma design, non-UI change, user chose loose strictness.
 ---
 
 # figma-precise-extract
 
-本 skill 把四个工具的输出烘焙成 measurement-grade 冻结 HTML：结构来自 `get_design_context`，精确数值来自 `get_metadata` 和 `get_variable_defs`，并按设计基准倍率换成 pt。implementation owner 读取冻结工件，不在写码时重新 live 取数。
+This skill bakes the output of four tools into a measurement-grade frozen HTML: structure comes from `get_design_context`, exact numbers from `get_metadata` and `get_variable_defs`, converted to pt by the design base scale. The implementation owner reads the frozen artifacts and does not re-fetch live data while writing code.
 
-## 触发 / 不触发
+## Triggers / does not trigger
 
-触发：
+Triggers:
 
-- strict Figma→code 任务在 Default mode 开始实现前冻结设计输入
-- 任何 figma→code 任务要拿精确图标尺寸 / 间距 / token
-- 排查「按 figma 实现但图标 / 间距 / 控件大小对不齐」
+- a strict Figma→code task freezing design inputs before implementation starts in Default mode
+- any figma→code task that needs exact icon size / spacing / token
+- diagnosing "implemented per figma but icon / spacing / control size does not line up"
 
-不触发：
+Does not trigger:
 
-- 无 figma 设计稿（按口述实现）
-- 非 UI 改动
-- 用户明确 loose 严格度（只要版式骨架 + 颜色 token，间距 / 字号允许 ±2pt）
+- no figma design (implementing from a verbal description)
+- non-UI change
+- user explicitly chose loose strictness (layout skeleton + color tokens only; spacing / font size may vary ±2pt)
 
-## 四工具分工（核心心智模型）
+## Division of labor across the four tools (core mental model)
 
-| 工具 | 给你什么 | 数值可信度 |
+| Tool | What it gives you | Numeric trustworthiness |
 |---|---|---|
-| `get_design_context` | **布局结构 + 参考 HTML/CSS 骨架**：Auto Layout（itemSpacing / 各边 padding / 对齐 / FILL-HUG-FIXED）+ 一段参考代码 + 资源下载 URL | ❌ 代码里的数值按目标框架刻度吸附过（`gap-2`/`p-4`）、**不是测量值**；但结构 / Auto Layout 语义 + HTML 骨架**只在这里** |
-| `get_metadata` | **精确像素几何**：逐节点 id / 类型 / 名字 / x / y / width / height（含子节点） | ✅ 唯一精确像素来源 |
-| `get_variable_defs` | **精确 token**：spacing / size / radius / color 变量名 → 值 | ✅ 间距 / 图标尺寸 / 圆角的设计本意 |
-| `get_screenshot` | 渲染后的栅格图，长边被 maxDimension 压缩 | ⚠️ 只看版式 / 确认节点被画出来，**不能拿来量**像素 |
+| `get_design_context` | **Layout structure + reference HTML/CSS skeleton**: Auto Layout (itemSpacing / per-side padding / alignment / FILL-HUG-FIXED) + a block of reference code + asset download URLs | ❌ numbers in the code are snapped to the target framework's scale (`gap-2`/`p-4`) and are **not measurements**; but structure / Auto Layout semantics + the HTML skeleton are **only here** |
+| `get_metadata` | **Exact pixel geometry**: per-node id / type / name / x / y / width / height (children included) | ✅ the only source of exact pixels |
+| `get_variable_defs` | **Exact tokens**: spacing / size / radius / color variable name → value | ✅ the design intent for spacing / icon size / corner radius |
+| `get_screenshot` | Rendered raster, long edge compressed by maxDimension | ⚠️ for checking layout / confirming a node was drawn, **not for measuring** pixels |
 
-烘焙 = **拿 get_design_context 的结构骨架，把里面被吸附的数值用 get_metadata（尺寸）+ get_variable_defs（间距/token）覆盖、按倍率换成 pt**。别指望一个工具全给：结构 ← design_context，精确像素 ← metadata，token ← variable_defs。
+Baking = **take the structural skeleton from get_design_context and override its snapped numbers with get_metadata (sizes) + get_variable_defs (spacing/tokens), converted to pt by the scale**. Do not expect one tool to give everything: structure ← design_context, exact pixels ← metadata, tokens ← variable_defs.
 
-## 烘焙 SOP
+## Baking SOP
 
-1. **选准节点**：先对目标节点 `get_metadata` 看层级树，确认抓的是**可见组件本体**、不是带 padding 的 wrapper / 热区。URL 的 node-id 选错（指到 page / 父节点）会拿到整屏几何。
+1. **Pick the right node**: run `get_metadata` on the target node first to see the layer tree and confirm you grabbed the **visible component itself**, not a padded wrapper / hit area. A wrong node-id in the URL (pointing at the page / a parent node) yields whole-screen geometry.
 
-2. **算设计基准倍率（必先算、别默认 1）**：`倍率 = figma frame 宽(px) / 目标设备点宽(pt)`。=1 才 px==pt（frame 宽正好 = 375/390/393/414/428/430）；@2x/@3x（frame 786/1179）或非整设备宽稿（1440 web 稿、393 设备放 414 稿）倍率 ≠ 1，所有布局数都要除它。**陷阱**：跳过这步会让每个数被同一常数带偏、比例自洽 → 肉眼 + 压缩图自测都看不出来。烘焙时只应用**一次**，冻进 HTML 的数全是 pt。
+2. **Compute the design base scale (compute it first, never default to 1)**: `scale = figma frame width (px) / target device point width (pt)`. Only =1 means px==pt (frame width exactly 375/390/393/414/428/430); @2x/@3x (frame 786/1179) or non-device-width designs (1440 web design, a 414 design on a 393 device) give scale ≠ 1, and every layout number must be divided by it. **Trap**: skipping this step biases every number by the same constant and keeps the proportions self-consistent → neither the eye nor a compressed-image self-check catches it. Apply it **once** while baking; every number frozen into the HTML is pt.
 
-3. **取结构骨架** ← `get_design_context({nodeId, forceCode: true})`：拿 Auto Layout 结构 / 对齐 / sizing 模式 / 图层层级 + 一段参考 HTML/CSS + 资源下载 URL。`forceCode: true` 防大节点退化成只返回 metadata；仍只回 metadata（无结构 / 无资源 URL）或返回稀疏数据（只剩 `<frame>`/`<text>` 标签没样式）→ 走下方「大节点退化兜底」逐子节点分级重抓，**别直接手写骨架**（手写救不回切图资源 URL）。**保留结构、不信里面的数值**。
+3. **Get the structural skeleton** ← `get_design_context({nodeId, forceCode: true})`: Auto Layout structure / alignment / sizing modes / layer hierarchy + a block of reference HTML/CSS + asset download URLs. `forceCode: true` prevents a large node from degrading to metadata only; if it still returns metadata only (no structure / no asset URLs) or sparse data (only `<frame>`/`<text>` tags with no styles) → go to "Large-node degradation fallback" below and re-fetch child by child, level by level, and **do not hand-write the skeleton** (hand-writing cannot recover the exported asset URLs). **Keep the structure, do not trust the numbers inside it.**
 
-4. **取精确数覆盖骨架数值**：
-   - 尺寸 ← `get_metadata`：逐图标 / 关键控件子节点的精确 w/h/x/y，按倍率换成 pt
-   - 间距 / 圆角 ← `get_variable_defs` token 为先（token 化的精确无歧义）+ design_context Auto Layout 的 itemSpacing / padding **属性值**核对（不是生成代码 class）；metadata x/y 差只当交叉验证（SPACE_BETWEEN / padding / stroke 外溢会让它与声明值不符）
-   - token ← `get_variable_defs`（变体在精确变体节点上调）：size / spacing / radius / color 变量名 → 值，不只颜色
+4. **Fetch exact numbers to override the skeleton's values**:
+   - size ← `get_metadata`: exact w/h/x/y per icon / key control child node, converted to pt by the scale
+   - spacing / corner radius ← `get_variable_defs` tokens first (tokenized values are exact and unambiguous) + cross-check against the Auto Layout itemSpacing / padding **property values** in design_context (not the generated code's classes); metadata x/y deltas are cross-validation only (SPACE_BETWEEN / padding / stroke overflow make them disagree with the declared value)
+   - token ← `get_variable_defs` (call it on the exact variant node for variants): size / spacing / radius / color variable name → value, not just colors
 
-5. **烘焙成冻结 HTML** → `.specs/<slug>-assets/figma-<nodeId-safe>.html`（`<nodeId-safe>` = nodeId 把 `:` 替换成 `-`）：把 step 3 的结构骨架 + step 4 覆盖后的精确数值写成自包含 HTML/CSS，数值一律存 pt，token 同时保留值和名称。implementation owner 只读该工件。
+5. **Bake into frozen HTML** → `.specs/<slug>-assets/figma-<nodeId-safe>.html` (`<nodeId-safe>` = nodeId with `:` replaced by `-`): write step 3's structural skeleton + step 4's overridden exact numbers as self-contained HTML/CSS, all numbers stored in pt, tokens keeping both value and name. The implementation owner reads only this artifact.
 
-6. **截图只做视觉参考** ← `get_screenshot({nodeId, maxDimension: 4096})` 冻成 PNG：描边（outside/center）、阴影、模糊画在布局框外 → 不算尺寸。**PNG = 视觉真相**（颜色 / 阴影 / 渐变 / 渲染观感），**HTML = 测量真相**（尺寸 / 间距 / pt）。
+6. **Screenshot is visual reference only** ← `get_screenshot({nodeId, maxDimension: 4096})` frozen as PNG: strokes (outside/center), shadows and blur are drawn outside the layout box → they do not count toward size. **PNG = visual source of truth** (color / shadow / gradient / rendered look), **HTML = measurement source of truth** (size / spacing / pt).
 
-7. **图标专项（frame vs glyph）**：Figma 图标常是固定外框（24×24）裹更小字形（~20）+ 光学留白。metadata 报**外框**、导出 SVG viewBox 报**字形**。box 设成 metadata 外框尺寸（换 pt）；记「外框 X×X / 字形约 Y」进 HTML 注释。有 Code Connect 优先让图标解析到真实组件、别从几何重推。位图资源 @1x/2x/3x 各导一份进 asset catalog（见 `~/.claude/skills/figma-asset-export/SKILL.md`），不在 HTML 里换算。
+7. **Icons specifically (frame vs glyph)**: a Figma icon is usually a fixed outer frame (24×24) wrapping a smaller glyph (~20) + optical padding. metadata reports the **outer frame**, the exported SVG viewBox reports the **glyph**. Set the box to the metadata outer-frame size (converted to pt); record "outer frame X×X / glyph ≈ Y" in an HTML comment. With Code Connect, prefer resolving the icon to the real component over re-deriving it from geometry. Export bitmap assets once each at @1x/2x/3x into the asset catalog (see `~/.claude/skills/figma-asset-export/SKILL.md`), do not convert them inside the HTML.
 
-## 大节点退化兜底（design_context 返回稀疏数据时）
+## Large-node degradation fallback (when design_context returns sparse data)
 
-设计稿过大时 `get_design_context` 可能只返回稀疏标签或 metadata。关键缺失是结构骨架和资源 URL；直接手写无法恢复资源，implementation owner 会被迫用近似图标。
+When the design is too large, `get_design_context` may return only sparse tags or metadata. The critical omissions are the structural skeleton and the asset URLs; hand-writing cannot recover the assets, and the implementation owner is forced into approximate icons.
 
-**阻塞，不在稀疏态进下一步**。对退化节点 N 逐子节点分级重抓：
+**Block; do not proceed to the next step in the sparse state.** For a degraded node N, re-fetch child by child, level by level:
 
-1. `get_metadata(N)` 枚举 N 的一级子节点 id + 各自相对根的 x/y/w/h。
-2. 对每个一级子节点单独 `get_design_context({nodeId, forceCode: true})` —— 子节点更小、多半不再退化，拿回各自的结构 + 资源 URL。
-3. 仍退化的子节点再往下拆一层（递归），**深度上限 3 层**（或累计子节点数上限），防 MCP 调用爆炸。
-4. 超上限仍稀疏的子树 → 退回手写骨架，并在最终 plan 的风险/未决项中标明缺失资源 URL；实现前需要用户或 Root 决定是否接受。
+1. `get_metadata(N)` enumerates N's first-level child ids + each one's x/y/w/h relative to the root.
+2. Call `get_design_context({nodeId, forceCode: true})` on each first-level child separately — smaller nodes mostly no longer degrade, so you get back each one's structure + asset URLs.
+3. Split a still-degraded child one more level down (recursively), **depth limit 3 levels** (or a cumulative child-node cap), to prevent an MCP call explosion.
+4. A subtree still sparse past the limit → fall back to a hand-written skeleton and flag the missing asset URLs under risks/open items in the final plan; before implementation, the user or Root must decide whether to accept it.
 
-**坐标对齐陷阱（合并必做）**：单独重抓的子节点，其结构 / 坐标可能相对**自身原点 (0,0)**、不是父 frame。合并回冻结 HTML 时**必须**用 step 1 metadata 里每个子节点**相对根的 x/y** 做偏移，否则子节点全堆在 (0,0) —— 静默毁掉版面、肉眼 + 压缩图自测都看不出（同倍率陷阱那类）。
+**Coordinate-alignment trap (mandatory when merging)**: a separately re-fetched child's structure / coordinates may be relative to **its own origin (0,0)**, not the parent frame. When merging back into the frozen HTML you **must** offset by each child's **x/y relative to the root** from step 1's metadata, otherwise all children pile up at (0,0) — silently destroying the layout, invisible to both the eye and a compressed-image self-check (same class as the scale trap).
 
-烘焙只执行一次；设计源未变化时实现和 UI 验收都复用冻结工件。
+Bake once; while the design source is unchanged, both implementation and UI acceptance reuse the frozen artifacts.
 
-## 冻结 HTML 的内容
+## What the frozen HTML contains
 
-烘焙后的 HTML 等价于这张逐元素精确表（直接编码进 HTML/CSS，数值已是 pt）：
+The baked HTML is equivalent to this per-element precision table (encoded directly into the HTML/CSS, numbers already in pt):
 
-| 元素 | 精确尺寸 (pt) | 间距 / 位置 | token | 备注 |
+| Element | Exact size (pt) | Spacing / position | token | Notes |
 |---|---|---|---|---|
-| frame | 375×200 | 外 padding 16 | `spacing/md=16` | — |
-| icon: bell | 24×24（外框） | 到 title gap 8 | `icon/size/md=24` | 字形约 20、留白 2 |
-| title | 高 22 | baseline 与 icon 居中 | `text/title 17pt semibold` | — |
-| primary button | 高 44 | — | `radius/md=8` | — |
+| frame | 375×200 | outer padding 16 | `spacing/md=16` | — |
+| icon: bell | 24×24 (outer frame) | gap 8 to title | `icon/size/md=24` | glyph ≈ 20, padding 2 |
+| title | height 22 | baseline centered with icon | `text/title 17pt semibold` | — |
+| primary button | height 44 | — | `radius/md=8` | — |
 
-尺寸 = metadata 换 pt；间距 = variable_defs token 为先 + design_context itemSpacing 核对；token = variable_defs；对齐/sizing 来自 design_context。最终 plan 或 ExecPlan 只记录工件路径、倍率、token、严格度和切图清单，不内联逐元素表。
+Size = metadata converted to pt; spacing = variable_defs tokens first + cross-checked against design_context itemSpacing; token = variable_defs; alignment/sizing from design_context. The final plan or ExecPlan records only artifact paths, scale, tokens, strictness and the asset-export list, not the inlined per-element table.
 
-## preview.html 还原度预览（strict 任务）
+## preview.html fidelity preview (strict tasks)
 
-冻结 PNG 和 measurement HTML 之外，strict 任务默认在烘焙末尾生成第三份工件 `.specs/<slug>-assets/preview.html`，并连同冻结 PNG 一起 `open` 给用户在浏览器判还原度，再等实现授权。PNG 仍是颜色、阴影和图标观感的真相源。
+Beyond the frozen PNG and the measurement HTML, a strict task by default generates a third artifact at the end of baking, `.specs/<slug>-assets/preview.html`, and `open`s it together with the frozen PNG so the user can judge fidelity in a browser before implementation is authorized. The PNG remains the source of truth for color, shadow and icon feel.
 
-触发：strict figma→code 任务。loose 跳过（只要骨架 + 颜色 token、无需复刻）。
+Triggers: strict figma→code tasks. loose skips it (skeleton + color tokens only, no replication needed).
 
-生成规范（每 slug 一份合并文件）：
+Generation spec (one merged file per slug):
 
-- 自包含单文件：完整 `<!DOCTYPE html>` + 内联 CSS/JS、**无任何外部资源**（CDN / 外链字体 / 远程图都不行，CSP 与离线都要能开）。字体用系统栈 `-apple-system,"SF Pro",system-ui`（macOS 上即 SF Pro）。
-- 每个冻结 node 一个 native pt 宽手机框（倍率已应用，宽 = 设备点宽如 402），多 node **并排**（flex-wrap）+ 各框标 node-id + 态名。
-- 几何来自 measurement HTML（间距 / 尺寸 / 圆角 / 字号 pt 1:1）；颜色 / 玻璃 / 渐变来自 PNG（玻璃用 `backdrop-filter: blur` 近似）；图标用内联 SVG 近似（SF Symbol 不可用）。
-- 有状态变体（折叠↔展开 / 选中切换 / 空↔满态）→ 加最小内联 JS 点击切换，默认展示主态。
-- 顶部一条 caveats banner：「近似复刻：judge 版式 / 间距 / 结构；PNG = 视觉真相（玻璃 / 色 / 图标更精细）；agentName 等占位已用运行时值替换」。
-- 文件名固定 `preview.html`。烘焙时一次性生成；只有设计源（file/node/version）或选中 node 集合变化才重建，且只更新受影响 node 的手机框并同步对应 PNG/measurement HTML 与最终 plan。实现迭代、code review 和验证轮次不重建、不改写该文件。
+- Self-contained single file: full `<!DOCTYPE html>` + inline CSS/JS, **no external resources at all** (no CDN / linked fonts / remote images; it must open under CSP and offline). Use the system font stack `-apple-system,"SF Pro",system-ui` (SF Pro on macOS).
+- One native-pt-wide phone frame per frozen node (scale already applied, width = device point width such as 402), multiple nodes **side by side** (flex-wrap), each frame labeled with node-id + state name.
+- Geometry comes from the measurement HTML (spacing / size / corner radius / font size 1:1 in pt); color / glass / gradient come from the PNG (approximate glass with `backdrop-filter: blur`); approximate icons with inline SVG (SF Symbol is unavailable).
+- Stateful variants (collapsed↔expanded / selection toggle / empty↔full) → add minimal inline JS to toggle on click, showing the primary state by default.
+- A caveats banner at the top: "Approximate replica: judge layout / spacing / structure; PNG = visual source of truth (glass / color / icons are finer there); placeholders such as agentName have been replaced with runtime values".
+- The filename is fixed as `preview.html`. Generate it once during baking; rebuild only when the design source (file/node/version) or the selected node set changes, and then update only the affected nodes' phone frames and sync the corresponding PNG/measurement HTML and the final plan. Implementation iterations, code review and verification rounds neither rebuild nor rewrite this file.
 
-## 硬约束
+## Hard constraints
 
-- ❌ 不把 `get_design_context` 生成代码里的尺寸 / 间距当精确值冻进 HTML（被框架刻度吸附过，尤其 Tailwind / 设计系统 client）—— **必须**用 metadata（尺寸）/ token（间距）覆盖后再冻
-- ❌ `get_design_context` 返回稀疏数据（仅 metadata / 无资源 URL）时直接手写骨架进下一步 —— 必走「大节点退化兜底」逐子节点分级重抓（手写救不回切图资源 URL）；合并子节点必按 metadata 相对根 x/y 偏移
-- ❌ 不从 `get_metadata` 找 Auto Layout / 对齐 / strokeAlign / effects（它只有位置 / 尺寸）；间距别只信它的 x/y 差
-- ❌ 不拿 `get_screenshot` 栅格目测像素下结论
-- ❌ implementation worker 不 live 拉 Figma 测量或重烘焙共享工件；缺失/过期时交回 Root 更新
-- ❌ 设计稿标注值不写进项目文档（AGENTS/CLAUDE/knowledge/README）—— 文档以真实代码数据为准，引用代码常量 / token 定义路径；设计值只留在 `.specs/` 冻结工件与最终 plan
-- ✅ HTML 数值一律 pt（倍率烘焙时应用一次）；尺寸 ← metadata，间距 ← variable_defs token + design_context itemSpacing，结构 ← design_context
-- ✅ 图标按外框尺寸定 box；有 Code Connect 优先解析到真实组件
+- ❌ Do not freeze sizes / spacing from `get_design_context`'s generated code into the HTML as exact values (they are snapped to the framework scale, especially Tailwind / design-system clients) — you **must** override with metadata (size) / tokens (spacing) before freezing
+- ❌ Do not hand-write a skeleton and move on when `get_design_context` returns sparse data (metadata only / no asset URLs) — go through "Large-node degradation fallback" and re-fetch child by child, level by level (hand-writing cannot recover the exported asset URLs); merged children must be offset by their metadata x/y relative to the root
+- ❌ Do not look for Auto Layout / alignment / strokeAlign / effects in `get_metadata` (it has only position / size); do not trust its x/y deltas alone for spacing
+- ❌ Do not draw conclusions by eyeballing pixels in a `get_screenshot` raster
+- ❌ The implementation worker does not pull live Figma measurements or re-bake shared artifacts; hand missing/stale ones back to Root to update
+- ❌ Design-spec annotated values do not go into project docs (AGENTS/CLAUDE/knowledge/README) — docs follow the real code data and cite code constants / token definition paths; design values stay in the `.specs/` frozen artifacts and the final plan
+- ✅ All HTML numbers are pt (the scale is applied once during baking); size ← metadata, spacing ← variable_defs tokens + design_context itemSpacing, structure ← design_context
+- ✅ Set the icon box from the outer-frame size; with Code Connect, prefer resolving to the real component
 
-## 在 plan-first delivery 里的位置
+## Where this sits in plan-first delivery
 
-- **Root/source prep**：在 Default mode、源码写入前，为最终 plan 选定的 node 生成 `.specs/<slug>-assets/figma-*.png` 与 `figma-*.html`。
-- 同时记录 Figma file/node/version（provider 提供时）和全部冻结工件 SHA-256；没有 immutable version 时，以这组冻结工件的 bundle digest 作为 UI review 的 design identity，验收期间不再拉 mutable latest。
-- 工件若暴露新的可观察行为、scope、架构或验收决策，Root 必须回到 DISCOVER/PLAN_READY 更新 authoritative plan；不能让后生成的 HTML/PNG 静默覆盖最终 plan。
-- **implementation owner**：读取冻结 HTML/PNG 实现，不 live 拉取设计测量。
-- **ui-reviewer**：可运行 build PASS 后按冻结 PNG、严格度和用例做视觉对照；精确尺寸参考 HTML。
+- **Root/source prep**: in Default mode, before any source is written, generate `.specs/<slug>-assets/figma-*.png` and `figma-*.html` for the nodes the final plan selected.
+- Also record the Figma file/node/version (when the provider supplies it) and the SHA-256 of every frozen artifact; with no immutable version, the bundle digest of this frozen artifact set is the design identity for UI review, and no mutable latest is pulled during acceptance.
+- If an artifact exposes new observable behavior, scope, architecture or acceptance decisions, Root must return to DISCOVER/PLAN_READY and update the authoritative plan; a later-generated HTML/PNG must not silently override the final plan.
+- **implementation owner**: implements from the frozen HTML/PNG, does not pull live design measurements.
+- **ui-reviewer**: after a runnable build PASSes, compares visually against the frozen PNG per strictness and cases; exact sizes come from the HTML.
 
-## Why（核心）
+## Why (core)
 
-`get_design_context` 生成代码里的数值可能被框架刻度吸附；精确像素用 `get_metadata`，token 用 `get_variable_defs`，冻结时统一换成 pt。
+Numbers in `get_design_context`'s generated code may be snapped to the framework scale; use `get_metadata` for exact pixels and `get_variable_defs` for tokens, converted uniformly to pt when freezing.

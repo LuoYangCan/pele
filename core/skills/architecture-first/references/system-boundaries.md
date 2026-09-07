@@ -1,44 +1,44 @@
-# 模块、依赖与副作用边界
+# Module, dependency, and side-effect boundaries
 
-仅在 `architecture-first` 已确认模块 ownership、依赖方向、public seam 或 IO/持久化边界存在未决 material choice 时读取。单模块内的 helper、局部 service 或普通测试替身不触发。
+Read only when `architecture-first` has already confirmed an unresolved material choice in module ownership, dependency direction, a public seam, or the IO/persistence boundary. A helper inside one module, a local service, or an ordinary test double does not trigger it.
 
-## 边界事实
+## Boundary facts
 
-- 现有模块图和允许的依赖方向；
-- public contract 的 owner、调用方和兼容窗口；
-- volatile dependency、IO、时间、随机数、持久化分别位于哪层；
-- 业务 invariant 能否独立于 framework/SDK 执行；
-- migration、rollback 和旧调用方如何过渡。
+- the existing module graph and the allowed dependency directions;
+- the public contract's owner, callers, and compatibility window;
+- which layer holds volatile dependencies, IO, time, randomness, and persistence;
+- whether business invariants can run independently of the framework/SDK;
+- how migration, rollback, and old callers transition.
 
-## 形态路由
+## Shape routing
 
-| 约束 | 优先形态 | 拒绝条件 |
+| Constraint | Preferred shape | Rejection condition |
 | --- | --- | --- |
-| 项目已有合法依赖方向和 owner | 沿用现有模块/API | 不为局部便利新建横向依赖 |
-| 内层业务需要可替换的外部能力 | Port/interface + adapter | 只有一个局部调用且不跨 boundary |
-| 第三方/legacy API 不应渗入业务 | Adapter | 内部接口只是原 API 的同形转发 |
-| 业务规则可纯计算，IO 可集中 | Functional core + imperative shell | 业务本身几乎全是 IO 编排 |
-| 多个调用方需要稳定的业务动作 | Application service/use case | 只是给单个函数换名字 |
-| 多个子系统的常用编排要隐藏 | Facade | 调用方需要细粒度控制或只包一项调用 |
-| 跨模块共享稳定业务能力 | 下沉到最小中立层 | 共享只是代码相似、语义会独立演化 |
+| The project already has a legal dependency direction and owner | Reuse the existing module/API | Do not create a lateral dependency for local convenience |
+| Inner business logic needs a swappable external capability | Port/interface + adapter | There is only one local call and it does not cross a boundary |
+| A third-party/legacy API must not leak into the business | Adapter | The internal interface is an isomorphic forward of the original API |
+| Business rules can be pure computation and IO can be centralized | Functional core + imperative shell | The business itself is almost entirely IO orchestration |
+| Multiple callers need a stable business action | Application service/use case | It only renames a single function |
+| Common orchestration across subsystems must be hidden | Facade | Callers need fine-grained control, or it wraps a single call |
+| A stable business capability is shared across modules | Sink it into the smallest neutral layer | The sharing is only code similarity; the semantics will evolve independently |
 
-## 依赖规则
+## Dependency rules
 
-- 依赖箭头服从项目 invariant；不为局部复用新增 invariant 未授权的横向依赖。项目允许时仍要明确 contract owner 与演化责任。
-- protocol/interface 放在需要稳定契约的一侧；不要默认放在实现旁或“common”垃圾桶。
-- volatile SDK 只能通过 adapter 暴露业务需要的最小语义。
-- IO、数据库、时钟和随机数的 owner 必须显式；需要 deterministic test 时从 boundary 注入。
-- public contract 变化要记录 source/binary compatibility、版本窗口和调用方迁移顺序。
-- 新 shared module 必须有明确 owner、依赖预算和至少两个真实消费者；否则优先留在现有 boundary。
-- 不以 Clean/Hexagonal 等名称替代具体模块图；决策必须写出谁依赖谁、谁拥有 contract。
+- Dependency arrows obey the project invariants; do not add a lateral dependency the invariants do not authorize just for local reuse. Even where the project allows it, still name the contract owner and who owns its evolution.
+- Put the protocol/interface on the side that needs the stable contract; do not default to placing it next to the implementation or in a "common" junk drawer.
+- A volatile SDK may only expose, through an adapter, the minimum semantics the business needs.
+- The owner of IO, database, clock, and randomness must be explicit; inject from the boundary when deterministic tests are needed.
+- A public contract change must record source/binary compatibility, the version window, and the caller migration order.
+- A new shared module needs an explicit owner, a dependency budget, and at least two real consumers; otherwise keep it inside the existing boundary.
+- Do not substitute a name like Clean/Hexagonal for a concrete module graph; the decision must spell out who depends on whom and who owns the contract.
 
-## Consequences 最低要求
+## Consequences: minimum requirements
 
-在 `architecture_decision` 中记录：
+Record in `architecture_decision`:
 
-- affected modules 和新的依赖方向；
-- contract owner、适配层和兼容策略；
-- 数据/持久化迁移与 rollback（如适用）；
-- boundary tests、contract tests 和需要保持的现有调用方行为。
+- affected modules and the new dependency direction;
+- contract owner, adapter layer, and compatibility strategy;
+- data/persistence migration and rollback (where applicable);
+- boundary tests, contract tests, and existing caller behavior that must be preserved.
 
-不要生成架构教程或项目无关示例；只输出当前仓库事实支持的边界选择。
+Do not produce architecture tutorials or examples unrelated to the project; output only the boundary choice that facts in the current repository support.

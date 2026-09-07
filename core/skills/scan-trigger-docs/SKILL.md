@@ -1,15 +1,15 @@
 ---
 name: scan-trigger-docs
-description: 扫描项目 AGENTS.md/CLAUDE.md 中的 trigger-on-touch 文档索引，并全文读取与本轮计划、写入或 review 范围相交的文档。项目没有索引或范围明确无交集时跳过。
+description: Scan the trigger-on-touch doc index in the project's AGENTS.md/CLAUDE.md and read in full every doc that intersects this round's plan, write, or review scope. Skip when the project has no index, or when the scope clearly does not intersect.
 ---
 
 # Scan trigger-on-touch docs
 
-普通 Markdown 链接不会自动把目标正文注入 context。任何负责规划、实现或 review 的 agent 都要按自己的实际范围独立执行本流程。
+A plain Markdown link does not automatically inject the target's body into context. Every agent that plans, implements, or reviews runs this flow independently against its own actual scope.
 
-## 1. 定位项目根
+## 1. Locate the project root
 
-从 cwd 向上找最近的 `AGENTS.md` 或 `CLAUDE.md`。在 worktree 中使用 worktree 自己的文件，不跳回主仓库。
+Walk up from cwd to the nearest `AGENTS.md` or `CLAUDE.md`. Inside a worktree use the worktree's own files; do not jump back to the main repository.
 
 ```bash
 project_root="$PWD"
@@ -20,49 +20,49 @@ while [[ "$project_root" != "/" \
 done
 ```
 
-两者都不存在则结束。
+Stop if neither exists.
 
-## 2. 读取索引
+## 2. Read the index
 
-host 已把 always-load 文件注入 context、或项目自带专用 scan skill 时，以注入内容与项目版为准，不重复 Read；否则完整读取存在的 `AGENTS.md` 和 `CLAUDE.md`。查找以下形式及语义等价写法：
+When the host has already injected the always-load files into context, or the project ships its own dedicated scan skill, the injected content and the project version win — do not Read them again; otherwise read whichever of `AGENTS.md` and `CLAUDE.md` exist, in full. Look for the following forms and any semantically equivalent phrasing:
 
-- “改动以下任一范围前先读该文档”；
-- “trigger-on-touch / touch 前必读”；
-- 指向子系统索引的普通 Markdown 链接。
+- "read this doc before changing any of the following scopes";
+- "trigger-on-touch / must read before touching";
+- a plain Markdown link pointing to a subsystem index.
 
-若 always-load 文件把触发表委托给另一个索引文件，完整读取该索引后再判断。
+If an always-load file delegates the trigger table to another index file, read that index in full before deciding.
 
-## 3. 匹配本轮范围
+## 3. Match this round's scope
 
-对每个 trigger 记录 doc 路径和触发路径/类型/模块/概念。用本轮计划触达路径、当前 ownership、实际 changed paths 或 review scope 匹配：
+For each trigger, record the doc path and the triggering path/type/module/concept. Match against this round's planned paths, current ownership, actual changed paths, or review scope:
 
-| 信号 | 处理 |
+| Signal | Handling |
 | --- | --- |
-| 文件直接位于触发路径 | 读取 |
-| 类型、函数或模块名命中 | 读取 |
-| 功能语义与 doc 主题相关 | 读取 |
-| 明确跨平台/跨模块且无交集 | 跳过 |
-| 边界不确定 | 读取 |
+| The file sits directly under a trigger path | Read |
+| A type, function, or module name hits | Read |
+| Feature semantics relate to the doc's topic | Read |
+| Clearly another platform/module with no intersection | Skip |
+| The boundary is uncertain | Read |
 
-范围在执行中扩大时重新匹配新增部分；无需重复读取同一版本的文档。
+When scope grows during execution, re-match the added part; no need to re-read the same version of a doc.
 
-## 4. 读取并应用
+## 4. Read and apply
 
-全文读取所有命中文档，不用 `grep/head` 片段替代。文档内若有递归 trigger，按同样规则继续。
+Read every doc that hits in full; do not substitute `grep/head` fragments. If a doc carries recursive triggers, continue under the same rules.
 
-- 规划：把会改变实现或验收的约束写入最终 plan。
-- 实现：遵守 invariant；若它与 plan 冲突，暂停写入并回到决策层。
-- review：以文档为证据检查最终 diff，只报告当前 diff 的偏离。
+- Planning: write constraints that would change implementation or acceptance into the final plan.
+- Implementation: obey the invariants; if one conflicts with the plan, pause writing and go back to the decision layer.
+- Review: check the final diff against the doc as evidence, and report only deviations in the current diff.
 
-项目存在 `.cursor/rules/*.mdc` 时，仅在文件名/前言显示与本轮范围相关时全文读取。
+When the project has `.cursor/rules/*.mdc`, read one in full only when its filename/preamble shows it is relevant to this round's scope.
 
-## 输出
+## Output
 
-调用方可在结构化结果中附：
+The caller may attach to its structured result:
 
 ```yaml
 trigger_docs_read:
   - <repo-relative path>
 ```
 
-本 skill 不修改 marker、不缓存跨 session 结果，也不替代规划、实现或 review。
+This skill does not modify markers, does not cache results across sessions, and does not replace planning, implementation, or review.

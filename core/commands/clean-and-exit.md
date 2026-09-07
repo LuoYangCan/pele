@@ -1,5 +1,5 @@
 ---
-description: cleanup-and-exit 的别名；退出前清理当前 worktree
+description: Alias for cleanup-and-exit; clean up the current worktree before exiting
 ---
 
 Use the cleanup-and-exit skill:

@@ -1,5 +1,5 @@
 ---
-description: PR review — subagent review 指定 PR（默认当前分支 PR），在评论区留评
+description: PR review — a subagent reviews the given PR (the current branch's PR by default) and leaves comments in the comment section
 ---
 
 Use the source-command-pr-review skill:

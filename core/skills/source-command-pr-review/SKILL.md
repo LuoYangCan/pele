@@ -1,6 +1,6 @@
 ---
 name: "source-command-pr-review"
-description: "PR review — subagent review 指定 PR（默认当前分支 PR），在评论区留评；Claude 用 Haiku，Codex 用 Terra high"
+description: "PR review — a subagent reviews the given PR (defaults to the current branch's PR) and leaves a comment on it; Haiku on Claude, Terra high on Codex"
 ---
 
 # source-command-pr-review
@@ -9,35 +9,35 @@ Use this skill when the user asks to run the migrated source command `pr-review`
 
 ## Command Template
 
-让 subagent 对一个 PR 做 review 并在评论区留评。**本 skill 只做 PR review**，不 commit、不 push、不合并。
+Have a subagent review one PR and leave a comment on it. **This skill only does PR review** — no commit, no push, no merge.
 
-## 参数
+## Arguments
 
-- 若用户传了 PR URL / 编号 → 用它
-- 否则 → 用 `gh pr view --json url,number,title` 取当前分支的 PR；若不存在 → 提示「当前分支未开 PR，先开 PR 再调 `/pr-review`」
+- If the user passed a PR URL / number → use it
+- Otherwise → use `gh pr view --json url,number,title` to get the current branch's PR; if there is none → report "no PR is open for the current branch, open one before calling `/pr-review`"
 
-## 派发
+## Dispatch
 
-用 Agent 工具派发 subagent：
+Dispatch a subagent with the Agent tool:
 
 - `subagent_type`: `general-purpose`
-- `model`: Claude 用 `haiku`；Codex 用 `gpt-5.6-terra` + `high`。PR review 含语义判断和外部评论，不下放 Luna
+- `model`: `haiku` on Claude; `gpt-5.6-terra` + `high` on Codex. PR review involves semantic judgment and an external comment, so it does not drop down to Luna
 - `description`: "PR review"
-- 任务 prompt：
+- Task prompt:
   - PR URL
-  - 让 subagent 自己跑 `gh pr view <url> --json title,body,files,additions,deletions` 和 `gh pr diff <url>` 读元信息与 diff
-  - 从「整体思路 / 潜在风险 / 后续建议」三个角度给评价
-  - **最后必须**用 `gh pr comment <url> --body "..."` 把评价发到 PR 评论区
-  - 返回给主 agent 的内容：「已评论」+ 评论摘要
+  - Have the subagent run `gh pr view <url> --json title,body,files,additions,deletions` and `gh pr diff <url>` itself to read the metadata and the diff
+  - Assess it from three angles: overall approach / potential risks / follow-up suggestions
+  - **It must finally** post the assessment to the PR comments with `gh pr comment <url> --body "..."`
+  - What to return to the main agent: "commented" plus a summary of the comment
 
-若没有 subagent 工具：主 agent 自己跑同样的 `gh pr view` / `gh pr diff` / `gh pr comment` 流程。**不要**因为 fallback 产生第二条重复评论；先查 PR comments 确认没有刚发出的评论。
+If no subagent tool is available: the main agent runs the same `gh pr view` / `gh pr diff` / `gh pr comment` flow itself. Do **not** let the fallback produce a second duplicate comment; check the PR comments first to confirm none was just posted.
 
-## 回报
+## Report back
 
-把 PR URL 和评论摘要返给用户。不自动进下一步。
+Return the PR URL and the comment summary to the user. Do not advance to a next step automatically.
 
-## 不做的事
+## Out of scope
 
-- ❌ 不修代码
-- ❌ 不合并 PR
-- ❌ 不再跑深度 review（那是 `/review` 的旗舰 reviewer 路径）
+- ❌ Does not modify code
+- ❌ Does not merge the PR
+- ❌ Does not run a deeper review on top (that is `/review`'s flagship reviewer path)

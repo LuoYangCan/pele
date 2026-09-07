@@ -1,69 +1,69 @@
 ---
 name: run-device
-description: Build, install, and launch the iOS app on a connected real iPhone. Use when the user asks to "装真机", "真机跑一眼", "install on device", "run on device / on my iPhone", "部署到手机", "真机调试", "put it on my phone". Skip for the simulator (use `open-sim`), macOS, or release / archive.
+description: Build, install, and launch the iOS app on a connected real iPhone. Use when the user asks to "install on a real device", "run it on the real device", "install on device", "run on device / on my iPhone", "deploy to my phone", "debug on device", "put it on my phone". Skip for the simulator (use `open-sim`), macOS, or release / archive.
 ---
 
 # run-device
 
-把当前 iOS 代码 build + 装 + 起到**连着的真机**上。机械部分下沉在共享脚本 `~/.claude/scripts/run-ios.sh`（`--target device`，跟 `open-sim` 共用），本 skill 只调它 + 转述结果。
+Build + install + launch the current iOS code on **a connected real device**. The mechanical part lives in the shared script `~/.claude/scripts/run-ios.sh` (`--target device`, shared with `open-sim`); this skill only calls it and relays the result.
 
-## 适用场景
+## When to use
 
-- 想在真实硬件上跑一眼（runtime 信心：能编译 / 安装 / 启动、资源链路没坏）
-- 真机调试某个只在设备上复现的行为
+- Want a quick look on real hardware (runtime confidence: it compiles / installs / launches, and the resource pipeline is not broken)
+- Debugging on device some behavior that only reproduces there
 
-不适用：模拟器（用 `open-sim`）· macOS · release / archive。
+Not for: the simulator (use `open-sim`) · macOS · release / archive.
 
-## 前置假设（真机特有）
+## Assumptions (device-specific)
 
-- iPhone **插上线 + 解锁 + 已信任此电脑**，且 paired（`xcrun devicectl list devices` 能看到）
-- 签名已在仓库 `Local.xcconfig` 配好（`DEVELOPMENT_TEAM` + Automatic），真机 build 不用额外配置
-- cwd 在 iOS 仓库（含 worktree）里某层，向上能找到 `justfile`
+- The iPhone is **plugged in + unlocked + has trusted this computer**, and is paired (visible in `xcrun devicectl list devices`)
+- Signing is already set up in the repo's `Local.xcconfig` (`DEVELOPMENT_TEAM` + Automatic); a device build needs no extra configuration
+- cwd is somewhere inside the iOS repo (worktree included), with a `justfile` findable upward
 
-## 执行
+## Run
 
 ```bash
 bash ~/.claude/scripts/run-ios.sh --target device
 ```
 
-脚本会：自动选**唯一可达物理设备**的 CoreDevice `identifier`（先按 `hardwareProperties.reality == physical` 排除注册成 CoreDevice 的模拟器，再按可达性收窄；`identifier` 是 UUID，如 `25CC377B-...`）→ `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → 定位产物（扫 `Build/Products/*-iphoneos/`，取最新的 `.app`；configuration 名由项目定义且会变，不写死 `Debug-`） → 从产物 `Info.plist` 读 bundle id → `devicectl device install app` + `process launch` → 打印 `----- run-ios result -----` 结果块。
+The script will: auto-select the CoreDevice `identifier` of **the single reachable physical device** (first excluding simulators registered as CoreDevice via `hardwareProperties.reality == physical`, then narrowing by reachability; `identifier` is a UUID, e.g. `25CC377B-...`) → `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → locate the build artifact (scans `Build/Products/*-iphoneos/`, takes the newest `.app`; the configuration name is project-defined and can change, so `Debug-` is not hardcoded) → read the bundle id from the artifact's `Info.plist` → `devicectl device install app` + `process launch` → print the `----- run-ios result -----` result block.
 
-- 接了**多台可达**物理设备 → 脚本报错只列可达候选，让用户挑，再传 id：
+- **Multiple reachable** physical devices connected → the script errors, lists only the reachable candidates for the user to pick, then pass the id:
   ```bash
   bash ~/.claude/scripts/run-ios.sh --target device --device-id <identifier>
   ```
-- 已 build 过、只想重装 → 加 `--no-build`。
+- Already built and you only want to reinstall → add `--no-build`.
 
-## 报告给用户
+## Report to the user
 
-转述结果块：装到哪台（`WHERE=device:<name>`）+ `UDID`（= CoreDevice identifier）+ `BUNDLE_ID` + `PID`。任何步骤失败脚本会 `ERROR:` + 非零退出 —— **原样报给用户，不要自动换方案**。
+Relay the result block: which device it landed on (`WHERE=device:<name>`) + `UDID` (= the CoreDevice identifier) + `BUNDLE_ID` + `PID`. On any step failure the script emits `ERROR:` and exits non-zero — **report it to the user verbatim, do not switch approaches automatically**.
 
-## 省 context（可选）
+## Save context (optional)
 
-真机 build 比 sim 慢、xcodebuild 日志更长。想挡在主对话外：Claude 派 Haiku / Sonnet；Codex 派 `command-runner`（Luna low），角色未加载时用 Terra low。subagent 只跑命令并返回结果块，不判断代码质量。
+A device build is slower than sim and the xcodebuild log is longer. To keep it out of the main conversation: on Claude dispatch Haiku / Sonnet; on Codex dispatch `command-runner` (Luna low), or Terra low when that role is not loaded. The subagent only runs the command and returns the result block; it does not judge code quality.
 
-## 失败处理（脚本退出码）
+## Failure handling (script exit codes)
 
-| 退出码 | 含义 | 怎么办 |
+| Exit code | Meaning | What to do |
 |---|---|---|
-| 1 | 没 paired 设备 / 多台可达需指定 / 多台 paired 但全不可达 / `devicectl` 没就绪 | 让用户插线+解锁+信任，或按提示传 `--device-id` |
-| 2 | 真机 build 失败 | 多半设备没连好 / 锁屏 / 没信任 / 签名问题；原样报 xcodebuild 错误 |
-| 3 | 找不到 `.app` | 仅 `--no-build` 时可能；让用户去掉 `--no-build` 重跑 |
-| 4 | devicectl install / launch 失败 | 设备插着+解锁+信任？install 成功 launch 才有意义 |
+| 1 | No paired device / multiple reachable ones need disambiguation / multiple paired but none reachable / `devicectl` not ready | Have the user plug in + unlock + trust, or pass `--device-id` as prompted |
+| 2 | Device build failed | Usually a bad connection / locked screen / not trusted / signing problem; report the xcodebuild error verbatim |
+| 3 | No `.app` found | Only possible with `--no-build`; have the user drop `--no-build` and re-run |
+| 4 | devicectl install / launch failed | Device plugged in + unlocked + trusted? launch only means something once install succeeds |
 
-设备选择只认物理机（`reality == physical`），再按**可达性**收窄：wired 即可达（即使 `tunnelState` 仍显示 `disconnected`，tunnel 由 devicectl 到用时才建），无线要真的 `connected`。手机拔走后仍长期留在 CoreDevice 配对记录里，所以只按 paired 判定会天天逼出 `--device-id`。
+Device selection accepts only physical machines (`reality == physical`), then narrows by **reachability**: wired counts as reachable (even when `tunnelState` still shows `disconnected` — devicectl builds the tunnel only when it is needed), wireless must actually be `connected`. A phone stays in the CoreDevice pairing records long after it is unplugged, so judging by paired alone would force `--device-id` every day.
 
-收窄后的分支：
+Branches after narrowing:
 
-| paired 物理设备 | 可达 | 行为 |
+| Paired physical devices | Reachable | Behavior |
 | ---- | ---- | ---- |
-| 1 | 任意 | 选它；不可达时先 `WARN:` 仍尝试，让真实的 xcodebuild / devicectl 错误兜底 |
-| N | 恰好 1 | **自动选中**，并打印 `— only reachable one of N paired` 说明理由 |
-| N | ≥2 | 报错，只列可达候选 |
-| N | 0 | 报错「无可达设备」，列出全部候选 |
+| 1 | any | Pick it; when unreachable, `WARN:` first and still try, letting the real xcodebuild / devicectl error be the backstop |
+| N | exactly 1 | **Auto-selected**, printing `— only reachable one of N paired` as the reason |
+| N | ≥2 | Error, listing only the reachable candidates |
+| N | 0 | Error "no reachable device", listing all candidates |
 
-## 不做的事
+## Out of scope
 
-- ❌ 不跑 `just generate` · 不切 scheme · 不碰模拟器（sim 走 `open-sim`）
-- ❌ 不配签名 / 不处理 provisioning（假设 `Local.xcconfig` 已就绪）
-- ❌ 不在用户没显式要求时跳过 build（默认每次 build）
+- ❌ Does not run `just generate` · does not switch scheme · does not touch the simulator (sim goes to `open-sim`)
+- ❌ Does not configure signing / does not handle provisioning (assumes `Local.xcconfig` is ready)
+- ❌ Does not skip the build unless the user explicitly asks (builds every time by default)

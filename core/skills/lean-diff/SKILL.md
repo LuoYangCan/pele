@@ -5,185 +5,185 @@ description: Lean-diff judgment standard covering comment noise, patchwork bloat
 
 # lean-diff
 
-写代码 / 审代码时的**精简判断标准**：
+The **lean judgment standard** for writing and reviewing code:
 
-1. 注释啰嗦
-2. 堆 patch 不删旧 / 不复用现有
-3. 过度防御性代码（吞错 / 多余 unwrap / 假 fallback）
+1. Comment noise
+2. Stacking patches without deleting the old / without reusing what exists
+3. Over-defensive code (swallowed errors / redundant unwraps / fake fallbacks)
 
-implementation owner 在写代码前用 **write 模式**自检；verifier 或 `/review` 在审代码时用 **review 模式**列 issue。两边使用同一套 issue_type。
+The implementation owner self-checks in **write mode** before writing code; `verifier` or `/review` lists issues in **review mode** when reviewing code. Both sides use the same issue_type set.
 
-这些局部 anti-patch 信号由本 skill 直接处理，不因为出现分支、flag、copy/paste、fallback 或 TODO 自动升级成架构选型。
+This skill handles these local anti-patch signals directly; the appearance of a branch, flag, copy/paste, fallback, or TODO does not automatically escalate into an architecture decision.
 
-## 使用方式
+## How to use
 
-### Write 模式
+### Write mode
 
-每次 Edit / Write 前过一遍 §自检清单（write）。命中任何一条 → 改回去再落地。
+Run through §Self-check list (write) before every Edit / Write. Any hit → change it back before landing.
 
-### Review 模式
+### Review mode
 
-扫被 review 的 diff，按 §issue_type 表给每个命中点产出结构化 issue：
+Scan the diff under review and emit a structured issue for each hit, per the §issue_type tables:
 
 ```yaml
 - severity: blocking | warning
-  issue_type: <表里的 type 名>
+  issue_type: <type name from the table>
   file: <path/to/file.swift>
-  line: <如有>
-  description: <一句话说清问题>
-  suggested_fix: <如显然，给修复方向；不强求>
+  line: <if available>
+  description: <one sentence stating the problem>
+  suggested_fix: <fix direction if obvious; not required>
 ```
 
-## 不触发
+## Does not trigger
 
-跳过的场景（这些 diff 不会触发本 skill 的判断标准）：
+Skipped cases (these diffs do not trigger this skill's standard):
 
-- typo / 单字符 fix / rename / 格式调整
-- 仅改注释 / 文档（评论本身就是审查目标，不应再用本 skill 评注释）
-- lint 工具自动修出来的改动（已经被工具兜底）
-- 删除代码（本 skill 关注新增 / 修改的代码质量；删除天然符合「优先减少代码」）
+- typo / single-character fix / rename / formatting adjustment
+- comment-only / doc-only changes (the comment is itself the object of review; do not use this skill to review comments again)
+- changes auto-fixed by a lint tool (the tool already backstops them)
+- code deletion (this skill covers the quality of added / modified code; deletion inherently satisfies "prefer removing code")
 
-## 三类判断标准
+## Three judgment standards
 
-### 1. 注释类
+### 1. Comments
 
-#### 默认不写注释
+#### Default to no comment
 
-好命名 + 类型已经说明 what。注释**只在 WHY 非显然时写** —— 隐藏约束、不变量、绕某个具体 bug、读者会困惑的行为。
+Good naming + types already state the what. Write a comment **only when the WHY is non-obvious** — a hidden constraint, an invariant, a workaround for a specific bug, behavior that would confuse the reader.
 
-#### 不该写的注释（看到要删 / 看到要标 issue）
+#### Comments not to write (delete on sight / tag an issue on sight)
 
-| issue_type | 触发 | 例子 |
+| issue_type | Trigger | Example |
 |---|---|---|
-| `verbose-comment` | 解释 what（紧邻代码做的事） | `// 把 user 加进 list` 紧跟 `users.append(user)` |
-| `task-bound-comment` | 引用当前任务、plan 章节、issue/fix 编号或临时 checklist | `// 为修 #123`、`// plan 要求...`、`// task-7` |
-| `removal-marker` | 删除残留 | `// removed`、`// renamed from X` |
-| `stale-todo` | 没截止 / 没责任人的 TODO | `// TODO: 之后优化` |
+| `verbose-comment` | explains the what (what the adjacent code does) | `// add user to the list` right above `users.append(user)` |
+| `task-bound-comment` | references the current task, a plan section, an issue/fix number, or a temporary checklist | `// to fix #123`, `// the plan requires...`, `// task-7` |
+| `removal-marker` | deletion residue | `// removed`, `// renamed from X` |
+| `stale-todo` | a TODO with no deadline / no owner | `// TODO: optimize later` |
 
-#### 例外（**不算 issue**）
+#### Exceptions (**not an issue**)
 
-- `// MARK: -`（Swift 章节切片，IDE 友好）
-- 引用项目 doc / 引用第三方 issue 链接的 `// see docs/x.md` 类指针注释
+- `// MARK: -` (Swift section markers, IDE-friendly)
+- pointer comments like `// see docs/x.md` that reference project docs or a third-party issue link
 
-#### 对照：写 why、不写 trace
+#### Contrast: write why, not trace
 
-`task-bound-comment` 禁的是“当时为什么动这行代码”的过程 trace。plan、task、PR 和 fix 编号会漂移或消失，注释应改写成长效因果。
+`task-bound-comment` bans the process trace of "why this line was touched at the time". Plans, tasks, PRs, and fix numbers drift or disappear; the comment should be rewritten as durable causality.
 
-但**why 注释是鼓励的**，前提是写**不随时间漂移的因果**：业务约束 / 系统行为 / 历史 bug / 性能取舍。判别：把这条注释拿给 1 年后、不知道当前任务存在的人看 —— 还能看懂吗？
+But **why comments are encouraged**, provided they state **causality that does not drift over time**: business constraints / system behavior / historical bugs / performance trade-offs. The test: show the comment to someone a year from now who does not know this task existed — can they still understand it?
 
-| 禁止（trace，会死链） | 鼓励（why，长效） |
+| Banned (trace, goes dead) | Encouraged (why, durable) |
 |---|---|
-| `// plan 要求 UTC` | `// server 端按 UTC 存储，本地转换在 presenter 层做` |
-| `// 本任务加的 retry` | `// iOS 17.4 NWConnection 首次握手有概率 ECONNRESET，retry 一次` |
-| `// 为修 #1234 加的 guard` | `// pendingAttachments 在 dismiss 动画中可能被外部清空，nil check 不可省` |
-| `// task-7 要求隐藏` | `// composer 在 picker 之上视觉错位，hide 由 caller-side scope 控制` |
-| `// 用户在 review 里要求` | `// 主线程 layout 重入会触发 SnapKit 重算 → 必须 async` |
+| `// the plan requires UTC` | `// the server stores in UTC; local conversion happens in the presenter layer` |
+| `// retry added by this task` | `// iOS 17.4 NWConnection can ECONNRESET on the first handshake; retry once` |
+| `// guard added to fix #1234` | `// pendingAttachments can be cleared externally during the dismiss animation; the nil check is required` |
+| `// task-7 requires hiding it` | `// the composer is visually misaligned above the picker; hiding is controlled by caller-side scope` |
+| `// requested by the user in review` | `// main-thread layout re-entrancy retriggers SnapKit recalculation → must be async` |
 
-规则不是"少写注释"，是"删掉会死链的那部分、留住会长期帮人的那部分"。
+The rule is not "write fewer comments", it is "delete the part that will go dead, keep the part that will help people long-term".
 
-#### Severity 规则
+#### Severity rules
 
-- 默认 **warning**
-- 单文件命中 ≥ 5 处 → 升级为 **blocking**（说明这个文件整体在用注释当 commit message，必须打回）
+- Default **warning**
+- ≥ 5 hits in one file → escalate to **blocking** (that whole file is using comments as a commit message; it must be sent back)
 
-### 2. 堆 patch 类
+### 2. Patch stacking
 
-#### 写代码前先问 4 问
+#### Four questions before writing code
 
-- 已有方法能扩参数达成吗？
-- 已有类型加字段能达成吗？
-- 已有 helper / extension 能复用吗？
-- 三段相似分支能合成一段吗？不要为了 DRY 建没有真实变化轴的抽象。
+- Can an existing method do it with an extra parameter?
+- Can an existing type do it with an extra field?
+- Can an existing helper / extension be reused?
+- Can three similar branches collapse into one? Do not build an abstraction with no real axis of variation just for DRY.
 
-减 1 行比加 1 行优先。非加不可时，宁可在已有处加而不是新建。
-
-#### Issue type
-
-| issue_type | 触发 | severity |
-|---|---|---|
-| `patchwork-bloat` | 新建方法 / 类型 / 文件，但 grep 显示已有可复用入口；用户/最终 plan 未要求新建 | warning |
-| `over-abstraction` | 引入新 protocol / Manager / Service / 配置参数 / feature flag / **单调用方包装类**，但用户/最终 plan 没要求、当前调用方只有 1-2 处 | warning |
-
-「单调用方包装类」识别要点：一个新类（常见命名 `XxxCoordinator` / `XxxService` / `XxxManager` / `XxxHelper`）只是把另一个已有 API 转一手 —— init 只存依赖、方法只 forward 调用、本身**没**额外逻辑（重试 / 状态转换 / 跨调用 state / 多依赖编排），且 grep 显示只一处调用方。这种包装层既不为单测带来 seam（因为反正只一处用），也不复用，纯增加跳转层 → over-abstraction。例：`VoiceMessageUploadCoordinator { init(service); upload(data) { try service.upload(data) } }` 在唯一调用点只是 `coord.upload(data)` 一次就丢 —— 直接 `service.upload(data)` 即可。
-
-#### 例外
-
-- 用户或最终 plan 的硬约束明确要求新建 → 跳过
-- authoritative final plan 已批准 material architecture change，且当前抽象是该决策的必要落地 → 跳过
-- 包装类**有**额外逻辑（重试策略 / 状态机 / 跨调用 cache / 多个依赖的编排）→ 不是 over-abstraction，跳过
-
-### 3. 过度防御代码类
-
-#### 默认契约
-
-- 内部代码互相调用、framework 给的 non-optional → **不验证、不 try/catch**。
-- 输入结构/字段语义只在不可信输入首次进入系统的 owner 边界验证（user input / external API / file IO），只验证构造可信内部值所必需的不变量；下游直接消费该可信类型。
-- 一个不变量只有一个验证 owner：decoder/parser 管结构，domain constructor 管业务不变量，transport adapter 管 request/response 关联，状态机或消费侧管时序、session、authorization context。下游可以验证自己新增的上下文不变量，不得重复上游已经建立的同一不变量。
-- 新 validation branch/helper/type 必须能指向用户/最终 plan 的要求、权威外部契约，或可复现的失败 fixture/trace。仅凭「可能出现」「更安全」不算证据。
-- 错误默认上抛或显式失败。fallback 必须由用户/最终 plan、项目规则、权威产品契约或已冻结的行为测试明确授权，并写清降级结果与恢复或失败归属；失败 fixture/trace 只能证明故障，不能授权降级，实现者自述也不算。不为「这种情况不会发生」加分支。
-- 有失败证据但没有 fallback 授权时，write mode 不落代码，向 Root 返回 `fallback_proposal`：`trigger/evidence`、`without_fallback`、`proposed_degraded_result`、`data_or_semantic_loss`、`recovery_or_failure_owner`。默认选择仍是不加 fallback；用户未回复不算授权。
+Removing one line beats adding one. When adding is unavoidable, prefer adding at an existing site over creating something new.
 
 #### Issue type
 
-| issue_type | 触发 | severity |
+| issue_type | Trigger | severity |
 |---|---|---|
-| `silent-catch` | `try?` / `catch { }` 静默吞错，且不满足下方统一例外 | **blocking** |
-| `speculative-validator` | 新 validation 无上述证据或无法说明唯一 owner；状态机/消费侧验证其自有时序/session/context 不变量不算 | **blocking** |
-| `duplicate-validator` | 同一不变量在多个层重复验证；消费侧新增的时序/session/context 不变量不算重复 | **blocking** |
-| `defensive-unwrap` | 验证不可能发生的情况（framework 保证 non-optional 还 `guard let` 早 return） | warning |
-| `defensive-fallback` | 用 fallback/default/lossy decode/clamp/drop-invalid 把失败伪装成可用结果，但没有证据与明确产品降级契约 | **blocking** |
+| `patchwork-bloat` | creates a new method / type / file, but grep shows an existing reusable entry point; the user / final plan did not ask for a new one | warning |
+| `over-abstraction` | introduces a new protocol / Manager / Service / config parameter / feature flag / **single-caller wrapper class**, but the user / final plan did not ask for it and there are only 1-2 callers today | warning |
 
-当 `try?`、空数组/空字符串默认值、lossy collection decode、跳过坏 item 或通用 unknown case 把失败/未知输入改成看似可用的结果时，属于 fallback；权威 schema 定义的语义默认值、保留原始值供上层判断的 unknown 表示，以及 owner 状态机拒绝不属于当前 session/时序的事件且不合成替代结果，都不算 fallback。
+How to spot a "single-caller wrapper class": a new class (commonly named `XxxCoordinator` / `XxxService` / `XxxManager` / `XxxHelper`) that just relays an existing API — init only stores dependencies, methods only forward calls, with **no** extra logic of its own (retry / state transitions / cross-call state / orchestration of several dependencies), and grep shows a single caller. Such a wrapper gives unit tests no seam (there is only one use anyway) and reuses nothing; it is pure added indirection → over-abstraction. Example: `VoiceMessageUploadCoordinator { init(service); upload(data) { try service.upload(data) } }` is used once at its only call site as `coord.upload(data)` and then dropped — `service.upload(data)` directly is enough.
 
-#### `silent-catch` 为何 blocking
+#### Exceptions
 
-吞错让根因以其他症状出现。如果需求明确要求失败静默或降级（如埋点失败不影响主流程），implementation owner 应写长效因果注释，而不是引用 plan 章节。
+- A hard constraint from the user or the final plan explicitly requires creating it → skip
+- The authoritative final plan has approved a material architecture change and this abstraction is a necessary part of landing that decision → skip
+- The wrapper **does** have extra logic (retry policy / state machine / cross-call cache / orchestration of multiple dependencies) → not over-abstraction, skip
 
-#### 统一例外
+### 3. Over-defensive code
 
-- 下列例外适用于本节全部 issue type。
-- 用户、最终 plan、项目规则、权威外部契约或复现失败的测试用例显式要求 validation；fallback 仍须满足上面的产品授权条件
-- 框架钩子要求实现的 default 值（`Equatable.==` 之类的协议 witness）
-- 对允许静默的失败写明稳定业务原因和失败边界；注释本身不能替代上面的证据
+#### Default contract
 
-## §自检清单（write 模式）
+- Internal code calling internal code, and non-optionals handed over by the framework → **no validation, no try/catch**.
+- Validate input structure/field semantics only at the owner boundary where untrusted input first enters the system (user input / external API / file IO), and only the invariants required to construct a trusted internal value; downstream consumes that trusted type directly.
+- An invariant has exactly one validation owner: the decoder/parser owns structure, the domain constructor owns business invariants, the transport adapter owns request/response correlation, and the state machine or consumer owns ordering, session, and authorization context. Downstream may validate context invariants it newly introduces, but must not repeat the same invariant already established upstream.
+- A new validation branch/helper/type must point to a requirement from the user / final plan, an authoritative external contract, or a reproducible failure fixture/trace. "It might happen" or "it's safer" alone is not evidence.
+- Errors propagate or fail explicitly by default. A fallback must be explicitly authorized by the user / final plan, project rules, an authoritative product contract, or a frozen behavior test, and must spell out the degraded result plus recovery or failure ownership; a failure fixture/trace only proves the fault, it cannot authorize degradation, and the implementer's own account does not count either. Do not add a branch for "this case cannot happen".
+- With failure evidence but no fallback authorization, write mode does not land code; return a `fallback_proposal` to Root: `trigger/evidence`, `without_fallback`, `proposed_degraded_result`, `data_or_semantic_loss`, `recovery_or_failure_owner`. The default choice is still no fallback; no reply from the user is not authorization.
 
-implementation owner 在写入前过一遍：
+#### Issue type
 
-- [ ] 我加的注释属于非显然 why，还是在解释 what / 引用 plan、task、fix 编号 / 留 stale TODO？一年后还能看懂吗？
-- [ ] 这段新代码对应的功能，能否扩 / 改已有方法 / 类型 / helper 达成？
-- [ ] 我引入的抽象（protocol / Manager / Service / 配置参数 / flag）当前真有 ≥3 处调用方吗？还是为「未来扩展」准备？
-- [ ] 每个新 validation branch/helper/type 能否指向用户/最终 plan、权威契约或复现 fixture/trace？它是否位于该不变量唯一的 owner 边界？
-- [ ] 同一不变量是否已由上游 owner 建立，下游又验了一次？下游检查的是否真是自己新增的时序/session/context 不变量？
-- [ ] 我写的 `try?` / `catch { }` 是否吞错？需求真要求静默吗？
-- [ ] 我的 `guard let / else { return }` 是 framework 保证 non-optional 还硬验证？
-- [ ] 我的 fallback/default/lossy decode/drop-invalid 是否既有外部证据，又有明确产品降级结果与恢复或失败归属语义，而不是掩盖错误根因？
-- [ ] 只有故障证据、没有产品授权时，我是否停在 Edit 前并返回 `fallback_proposal`，而不是替用户决定？
+| issue_type | Trigger | severity |
+|---|---|---|
+| `silent-catch` | `try?` / `catch { }` silently swallows an error and does not meet the shared exceptions below | **blocking** |
+| `speculative-validator` | new validation with none of the evidence above, or unable to name the single owner; a state machine/consumer validating its own ordering/session/context invariants does not count | **blocking** |
+| `duplicate-validator` | the same invariant validated again across several layers; ordering/session/context invariants newly introduced by the consumer are not duplicates | **blocking** |
+| `defensive-unwrap` | validates a case that cannot happen (`guard let` early return on something the framework guarantees non-optional) | warning |
+| `defensive-fallback` | uses fallback/default/lossy decode/clamp/drop-invalid to disguise a failure as a usable result, without evidence and an explicit product degradation contract | **blocking** |
 
-任一违规项命中，或证据/owner/降级语义答不出来 → 不落地；review mode 标 blocking issue。
+It is a fallback when `try?`, an empty-array/empty-string default, a lossy collection decode, skipping a bad item, or a generic unknown case turns a failed or unknown input into a seemingly usable result. It is not a fallback when the value is a semantic default defined by an authoritative schema, when an unknown representation preserves the raw value for an upper layer to judge, or when an owner state machine rejects an event that does not belong to the current session/ordering without synthesizing a substitute result.
 
-## §issue 输出契约（review 模式）
+#### Why `silent-catch` is blocking
 
-verifier 或 `/review` 把命中条目放进 `issues` 数组，每条按上方格式。`issue_type` 严格使用本 skill 表里的字段名，Root 可按 type 路由修复。
+Swallowing an error makes the root cause surface as some other symptom. If the requirement explicitly calls for silent failure or degradation (e.g. analytics failures must not affect the main flow), the implementation owner should write a durable causal comment rather than cite a plan section.
 
-## 与其他 skill / rule 的关系
+#### Shared exceptions
 
-- **architecture-first**：只解决未决 durable boundary；本 skill 处理局部 anti-patch/reuse hygiene。代码坏味道本身不升级，只有诊断证明修复必须改变 boundary 时才进入架构决策。
-- **cleanup backend**：Claude 用 `/simplify`；Codex 用 `codex-simplify`。cleanup 自动 fix；本 skill 只产判断和 issue 列表。
-- **dead-code**：dead-code 管"无人调用"（孤儿符号）；本 skill 管"该不该写"（写之前 / 写之后的判断）。两者正交。
-- **post-change-verify** rule：本 skill 不跑 build / lint。lint 工具能抓的格式问题（空格 / 缩进 / 行长）属于 swift-formatting 的领域，本 skill 重点放在工具抓不到的语义级问题。
+- The exceptions below apply to every issue type in this section.
+- The user, the final plan, project rules, an authoritative external contract, or a test case reproducing the failure explicitly requires the validation; a fallback must still meet the product-authorization condition above
+- A default value a framework hook requires you to implement (protocol witnesses such as `Equatable.==`)
+- For a failure that is allowed to be silent, state the stable business reason and the failure boundary; the comment itself cannot substitute for the evidence above
 
-## 不做的事
+## §Self-check list (write mode)
 
-- ❌ 不写代码（review 模式只产 issue 列表；write 模式只产自检结论）
-- ❌ 不替代 swift-formatting / SwiftLint 的格式检查
-- ❌ 不替代真正的 material boundary 决策；局部坏味道仍由本 skill 收敛
-- ❌ 不与用户或最终 plan 的硬约束冲突；显式要求的容错、防御或抽象不算 issue
-- ❌ 不替主 agent 决定 review-fix 是否采纳 —— 那是用户挑
+The implementation owner runs through this before writing:
 
-## Why（核心）
+- [ ] Is the comment I added a non-obvious why, or is it explaining the what / citing a plan, task, or fix number / leaving a stale TODO? Will it still make sense a year from now?
+- [ ] Could the feature this new code implements be achieved by extending / modifying an existing method / type / helper?
+- [ ] Does the abstraction I introduced (protocol / Manager / Service / config parameter / flag) really have ≥3 callers today, or is it prepared for "future extension"?
+- [ ] Can every new validation branch/helper/type point to the user / final plan, an authoritative contract, or a reproducible fixture/trace? Does it sit at that invariant's single owner boundary?
+- [ ] Was the same invariant already established by the upstream owner and then validated again downstream? Is the downstream check really an ordering/session/context invariant it newly introduced?
+- [ ] Does the `try?` / `catch { }` I wrote swallow an error? Does the requirement really call for silence?
+- [ ] Is my `guard let / else { return }` hard-validating something the framework already guarantees non-optional?
+- [ ] Does my fallback/default/lossy decode/drop-invalid have both external evidence and an explicit product degradation result with recovery or failure-ownership semantics, rather than masking the root cause?
+- [ ] With only failure evidence and no product authorization, did I stop before the Edit and return a `fallback_proposal` instead of deciding for the user?
 
-- implementation owner 与 reviewer 使用同一份 issue_type 表
-- 新增 issue type 只改本 skill
-- 跨 agent / `/review` 复用：未来别的 review 工具直接 invoke
-- issue_type 命名一致：主 agent review-fix 按 type 归类操作可行
+Any violation hit, or an unanswerable evidence/owner/degradation-semantics question → do not land it; in review mode tag a blocking issue.
+
+## §issue output contract (review mode)
+
+`verifier` or `/review` puts the hits into an `issues` array, each in the format above. `issue_type` uses the field names from this skill's tables strictly, so Root can route fixes by type.
+
+## Relationship to other skills / rules
+
+- **architecture-first**: only resolves unresolved durable boundaries; this skill handles local anti-patch / reuse hygiene. A code smell by itself does not escalate; only when diagnosis proves the fix must change a boundary does it enter an architecture decision.
+- **cleanup backend**: Claude uses `/simplify`; Codex uses `codex-simplify`. Cleanup fixes automatically; this skill only produces judgments and an issue list.
+- **dead-code**: dead-code owns "no caller" (orphan symbols); this skill owns "should it be written at all" (the judgment before / after writing). The two are orthogonal.
+- **post-change-verify** rule: this skill does not run build / lint. Formatting problems a lint tool can catch (whitespace / indentation / line length) belong to swift-formatting; this skill focuses on the semantic-level problems tools cannot catch.
+
+## Out of scope
+
+- ❌ Does not write code (review mode produces only the issue list; write mode produces only the self-check conclusion)
+- ❌ Does not replace the format checks of swift-formatting / SwiftLint
+- ❌ Does not replace a genuine material boundary decision; local code smells are still converged here
+- ❌ Does not conflict with hard constraints from the user or the final plan; explicitly required tolerance, defense, or abstraction is not an issue
+- ❌ Does not decide for the main agent whether a review-fix is adopted — that is the user's pick
+
+## Why (core)
+
+- The implementation owner and the reviewer use the same issue_type table
+- Adding an issue type changes only this skill
+- Reuse across agents / `/review`: other review tools can invoke it directly in future
+- Consistent issue_type naming: the main agent can group review-fix operations by type

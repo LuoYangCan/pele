@@ -1,73 +1,73 @@
 ---
 name: figma-asset-export
-description: 从 Figma 切图（导出图标 / 插画 / logo 资源）进 iOS 工程的规范——该切图还是用设计系统 / SF Symbol 还原的决策、切图格式选型、别从几何重画。Use when：从 figma 切图 / 导出自定义图标 / 插画 / logo 进 iOS、决定切图还是还原、定切图格式、排查「图标资源渲染偏色 / 偏大 / 糊」。Skip when：本次没有自定义资源（图标全走设计系统 / SF Symbol）/ 非 iOS / 用户明确手动切图。
+description: Rules for exporting assets from Figma (icons / illustrations / logos) into an iOS project — deciding export vs reproducing with the design system / SF Symbol, choosing the export format, never redrawing from geometry. Use when: exporting assets from figma / exporting custom icons / illustrations / logos into iOS, deciding export vs reproduce, choosing an export format, diagnosing "icon asset renders in the wrong color / too large / blurry". Skip when: no custom assets this round (all icons come from the design system / SF Symbol) / not iOS / the user exports assets by hand.
 ---
 
 # figma-asset-export
 
-从 Figma 切图进 iOS 的规范。figma MCP **能切图**：`get_design_context` 对含可导出资源的节点返回**资源下载 URL**（SVG / PNG）——这就是切图入口（`get_screenshot` 是整节点栅格、不是切图）。规范要点：先判**该不该切**，再定**格式**，最后**用导出文件、别从几何重画**。
+Rules for exporting assets from Figma into iOS. The figma MCP **can export assets**: for a node containing exportable assets, `get_design_context` returns **asset download URLs** (SVG / PNG) — that is the export entry point (`get_screenshot` is a whole-node raster, not an asset export). The essentials: first decide **whether to export at all**, then pick the **format**, and finally **use the exported file, do not redraw from geometry**.
 
-## 触发 / 不触发
+## Triggers / does not trigger
 
-触发：
+Triggers:
 
-- 从 figma 切图 / 导出自定义图标 / 插画 / logo 进 iOS
-- 决定某个图形该切图还是用设计系统 / SF Symbol 还原
-- 定切图格式（矢量 vs @1x/@2x/@3x）
-- 排查「切出来的资源渲染偏色 / 偏大 / 糊 / 对不齐」
+- exporting assets from figma / exporting custom icons / illustrations / logos into iOS
+- deciding whether a given graphic should be exported or reproduced with the design system / SF Symbol
+- choosing an export format (vector vs @1x/@2x/@3x)
+- diagnosing "the exported asset renders in the wrong color / too large / blurry / misaligned"
 
-不触发：
+Does not trigger:
 
-- 本次没有自定义资源（图标全走设计系统 / SF Symbol）
-- 非 iOS
-- 用户明确手动切图导出
+- no custom assets this round (all icons come from the design system / SF Symbol)
+- not iOS
+- the user explicitly exports assets by hand
 
-## 第一步：该切图，还是用代码还原？
+## Step 1: export the asset, or reproduce it in code?
 
-| 图形 | 处理 |
+| Graphic | What to do |
 |---|---|
-| 设计系统已有组件 / 能用 SF Symbol 表达 | **不切**——用组件 / SF Symbol（有 Code Connect 时解析到真实组件），尺寸 / 光学约定已编码进组件 |
-| 纯单色简单形状（箭头 / 勾 / 加号等）能用 SF Symbol 近似 | 优先 SF Symbol；像素级要求时才切 |
-| 自定义图标 / 插画 / logo / 多色图形 / 品牌资源 | **切图**——代码画不出、画出来也会漂 |
+| Already a design-system component / expressible as an SF Symbol | **Do not export** — use the component / SF Symbol (resolve to the real component when Code Connect exists); size / optical conventions are already encoded in the component |
+| Plain monochrome simple shape (arrow / check / plus, etc.) approximable by an SF Symbol | SF Symbol first; export only under pixel-level requirements |
+| Custom icon / illustration / logo / multi-color graphic / brand asset | **Export** — code cannot draw it, and what it draws will drift |
 
-## 切图机制（怎么拿到文件）
+## Export mechanics (how to get the file)
 
-1. `get_design_context({nodeId})` → 返回里含**资源下载 URL**（exportable 节点 / image fill 节点）。figma 给的是 **SVG / PNG** URL，**不直接给 PDF**（PDF 是 iOS 侧 SVG→PDF 转换）。
-2. `curl -sL "<asset_url>" -o .specs/<slug>-assets/<语义名>.<svg|png>` 下载导出文件。
-3. **导出 box = 外框、不是裁剪 path**：figma 图标常是固定外框裹更小字形 + 光学留白；导出要带外框留白（否则资源被裁到字形 bbox、渲染偏大 / 破对齐）。已知 MCP bug 会把 SVG 裁到 path bbox → 拿到后核对尺寸，必要时按 metadata 外框尺寸显式设 box。
+1. `get_design_context({nodeId})` → the return includes **asset download URLs** (exportable nodes / image-fill nodes). figma gives **SVG / PNG** URLs, **not PDF directly** (PDF is an SVG→PDF conversion on the iOS side).
+2. `curl -sL "<asset_url>" -o .specs/<slug>-assets/<semantic-name>.<svg|png>` downloads the exported file.
+3. **Export box = the outer frame, not the cropped path**: a figma icon is usually a fixed outer frame wrapping a smaller glyph + optical padding; the export must carry the outer-frame padding (otherwise the asset is cropped to the glyph bbox and renders too large / breaks alignment). A known MCP bug crops the SVG to the path bbox → check the size after downloading and, if needed, set the box explicitly to the metadata outer-frame size.
 
-## 第二步：格式选型（iOS）
+## Step 2: format selection (iOS)
 
-| 资源类型 | figma 导出格式 | iOS 处理 |
+| Asset type | figma export format | iOS handling |
 |---|---|---|
-| 单色、可缩放（多数图标） | **SVG**（figma 给 SVG，不给 PDF） | 进 asset catalog（Xcode 12+ 直接放 SVG，或 iOS 侧转 PDF），勾 **Preserve Vector Data** + **Single Scale**；render 设 **template**、用 `<DesignSystemPackage>` / Color token **tint**（**不烤死颜色**） |
-| 多色矢量（插画 / 彩色 logo） | **SVG** | 同上但 render **original**（保留多色） |
-| 位图 / 照片 / 复杂渐变 | **PNG** | `.imageset` 放 **@1x / @2x / @3x 各一份**（pt 尺寸 = @1x 那份），设备按 scale 自动选 |
+| Monochrome, scalable (most icons) | **SVG** (figma gives SVG, not PDF) | Into the asset catalog (Xcode 12+ takes SVG directly, or convert to PDF on the iOS side), check **Preserve Vector Data** + **Single Scale**; set render to **template** and **tint** with a `<DesignSystemPackage>` / Color token (**do not hard-code the color**) |
+| Multi-color vector (illustration / color logo) | **SVG** | Same, but render **original** (keeps the colors) |
+| Bitmap / photo / complex gradient | **PNG** | Put **one each at @1x / @2x / @3x** in the `.imageset` (pt size = the @1x one); the device picks by scale automatically |
 
-- **单色图标必须 template + token tint**：和设计 token 名核对（走 figma-precise-extract 的 variable_defs），别硬编码十六进制——深色 / 多主题才不串色。
-- iOS 18 SVG 直接进 asset catalog 也可；老工程惯例转 PDF。按项目现状走。
+- **Monochrome icons must be template + token tint**: cross-check against the design token name (via figma-precise-extract's variable_defs), do not hard-code hex — that is what keeps colors from bleeding in dark mode / multi-theme.
+- On iOS 18, SVG straight into the asset catalog also works; older projects conventionally convert to PDF. Follow the project's existing practice.
 
-## 别从几何重画
+## Do not redraw from geometry
 
-拿到导出文件就**用它**，不要看 `get_design_context` 的 path data 自己在代码里重画 `Path` / 拼 shape。冻结 HTML（见 `figma-precise-extract`）里即使含 inline `<svg>` path，implementation owner 也不从它几何重画；图标只使用最终 plan 列出的导出资源。
+Once you have the exported file, **use it**; do not read `get_design_context`'s path data and redraw a `Path` / assemble shapes in code. Even when the frozen HTML (see `figma-precise-extract`) contains inline `<svg>` paths, the implementation owner does not redraw from that geometry; icons use only the exported assets listed in the final plan.
 
-## 在 plan-first delivery 里的位置
+## Where this sits in plan-first delivery
 
-- **Root/source prep**：在 Default mode、源码写入前冻结导出资源到 `.specs/<slug>-assets/`，把格式、render mode 和 tint token 写入最终 plan 或 ExecPlan。切图与 measurement HTML 并列：前者给二进制资源，后者给布局测量。
-- 把 file/node/version（可用时）与每个导出资源 SHA-256 纳入 design binding；无 immutable version 时只按冻结 bundle 验收，不在 review 期间重新下载 latest。
-- 导出结果若引出新的行为、scope、架构或验收决策，Root 先回 DISCOVER/PLAN_READY 更新 authoritative plan，再继续实现。
-- **implementation owner**：把冻结资源接入 asset catalog，设置 template/original、tint token 和 Preserve Vector Data；设计源变化时由 Root 重新冻结，不在实现中临时换资源。
-- **ui-reviewer**：可运行 build PASS 后，对冻结 PNG 核对尺寸、颜色和清晰度。
+- **Root/source prep**: in Default mode, before any source is written, freeze the exported assets into `.specs/<slug>-assets/` and write the format, render mode and tint token into the final plan or ExecPlan. Asset export sits alongside the measurement HTML: the former gives binary assets, the latter layout measurements.
+- Include file/node/version (when available) and each exported asset's SHA-256 in the design binding; with no immutable version, accept against the frozen bundle only and do not re-download latest during review.
+- If the export result raises new behavior, scope, architecture or acceptance decisions, Root returns to DISCOVER/PLAN_READY to update the authoritative plan before implementation continues.
+- **implementation owner**: wires the frozen assets into the asset catalog and sets template/original, tint token and Preserve Vector Data; when the design source changes Root re-freezes, assets are not swapped ad hoc during implementation.
+- **ui-reviewer**: after a runnable build PASSes, checks size, color and sharpness against the frozen PNG.
 
-## 硬约束
+## Hard constraints
 
-- ❌ 不用 `get_screenshot` 当切图（那是整节点栅格、不是资源文件）
-- ❌ 不从 path 几何在代码里重画自定义图标 / 插画
-- ❌ 单色图标不烤死十六进制颜色 —— template + token tint
-- ❌ implementation worker 不重新切图；冻结资源和共享清单由 Root 管理
-- ✅ 自定义资源走 `get_design_context` 资源 URL（figma 给 SVG / PNG）导出；导出 box = 外框
-- ✅ 单色可缩放→SVG（Xcode 直接用或转 PDF）template + token tint；多色→original；位图→@1x/2x/3x
+- ❌ Do not use `get_screenshot` as an asset export (it is a whole-node raster, not an asset file)
+- ❌ Do not redraw custom icons / illustrations in code from path geometry
+- ❌ Do not hard-code hex colors in monochrome icons — template + token tint
+- ❌ The implementation worker does not re-export assets; frozen assets and the shared list are managed by Root
+- ✅ Export custom assets via `get_design_context` asset URLs (figma gives SVG / PNG); export box = the outer frame
+- ✅ Monochrome scalable → SVG (used directly in Xcode or converted to PDF) template + token tint; multi-color → original; bitmap → @1x/2x/3x
 
-## Why（核心）
+## Why (core)
 
-切图漂移两大根因是代码重画丢光学细节，以及导出裁到 glyph bbox 或烤死颜色。资源先冻结，implementation owner 只负责接入。
+The two root causes of asset drift are code redraws losing optical detail, and exports cropped to the glyph bbox or with hard-coded colors. Freeze the assets first; the implementation owner only wires them in.

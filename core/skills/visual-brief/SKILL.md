@@ -1,74 +1,74 @@
 ---
 name: visual-brief
-description: 用一张 inline 图承载结构、少量文字承载结论，替代长段落说明。要向用户讲清多步计划、实现方案、方案取舍，或一份调查与架构结论（调用链、数据流、模块依赖、根因链路、改动影响面）时使用；用户说「画个图」「可视化一下」「图示」「说不清就画出来」时必须使用。纯问答、单步操作、命令输出、代码 diff 本身，以及执行中的逐步进度播报不触发。
+description: Carry structure in one inline diagram and conclusions in a few lines of text, instead of a long paragraph of explanation. Use when explaining a multi-step plan, an implementation approach, a trade-off between approaches, or a set of investigation and architecture conclusions (call chains, data flow, module dependencies, root-cause chains, blast radius of a change) to the user; must be used when the user says "draw a diagram", "visualize this", "show it as a diagram", "just draw it if you can't explain it". Pure Q&A, single-step operations, command output, code diffs themselves, and step-by-step progress reports during execution do not trigger.
 ---
 
 # Visual brief
 
-结构性信息——顺序、分支、依赖、层级、位置关系——用眼睛读比用句子读快一个量级。文字只留人必须逐字读的那几行：判断、风险、要拍板的问题。
+Structural information — order, branching, dependencies, hierarchy, spatial relations — reads an order of magnitude faster by eye than in sentences. Leave in text only the few lines a person must read word by word: judgments, risks, and the questions someone has to decide.
 
-## 输出形状
+## Output shape
 
-三段，顺序固定：
+Three parts, fixed order:
 
-1. **一句话点题**（≤1 行）：这张图在回答什么问题。
-2. **图**：一次 `mcp__visualize__show_widget`。所有结构进图里。
-3. **关键结论**：3–5 条 bullet，只写图上画不出来的东西。
+1. **One-line framing** (≤1 line): what question this diagram answers.
+2. **Diagram**: one `mcp__visualize__show_widget` call. All structure goes into the diagram.
+3. **Key conclusions**: 3–5 bullets, only the things the diagram cannot draw.
 
-最容易犯的错是第 3 段把图里已有的框和箭头用文字复述一遍。判据：bullet 在描述图的*内容*就删掉，在给图的*含义*才留下。
+The easiest mistake is part 3 restating in words the boxes and arrows the diagram already has. Test: delete a bullet that describes the diagram's *content*; keep one that gives its *meaning*.
 
-## 什么值得画
+## What is worth drawing
 
-判据是"信息是不是结构性的"，不是"内容重不重要"。
+The test is "is the information structural", not "is the content important".
 
-| 要讲的东西 | 画什么 |
+| What you are explaining | What to draw |
 | --- | --- |
-| 多步计划 / 实现方案 | 步骤流。节点是可验收的产出，不是「去读某个文件」这类动作；用色标区分 已完成 / 进行中 / 待办 |
-| 方案取舍 | 并排卡片，一个方案一列，行是同一组评价维度；推荐项用 accent 边框标出，别只在文字里说 |
-| 根因 / 调用链 / 数据流 | flowchart，出问题的那条边或那个节点单独上色，其余全 gray——对比本身就是结论 |
-| 模块依赖 / 分层架构 | structural diagram，同层横排，依赖方向统一朝下 |
-| 改动影响面 | 模块地图，touched 的盒子上色，没动的留灰 |
-| 时序 / 竞态 | 泳道 + 时间轴，把交错的那一段单独拉出来放大 |
+| Multi-step plan / implementation approach | Step flow. Nodes are acceptance-checkable outputs, not actions like "go read some file"; use color to separate done / in progress / to do |
+| Trade-off between approaches | Side-by-side cards, one column per approach, rows are the same set of evaluation dimensions; mark the recommendation with an accent border, do not state it only in text |
+| Root cause / call chain / data flow | flowchart, color the failing edge or node alone and leave the rest gray — the contrast is itself the conclusion |
+| Module dependencies / layered architecture | structural diagram, same layer in a row, dependency direction uniformly downward |
+| Blast radius of a change | Module map, color the touched boxes, leave the untouched ones gray |
+| Sequencing / race conditions | Swimlanes + timeline, pull the interleaved stretch out on its own and enlarge it |
 
-不值得画：单步操作、两个盒子一个箭头（一句话更快）、本来就是清单的东西、命令和 diff 本身。
+Not worth drawing: single-step operations, two boxes and one arrow (a sentence is faster), things that already are a list, commands and diffs themselves.
 
-**自检**：把图去掉后，用同样长度的文字能讲得一样清楚吗？能，就别画——一张说不出新东西的图比一段文字更浪费用户的注意力。
+**Self-check**: with the diagram removed, could the same length of text say it just as clearly? If yes, do not draw it — a diagram that says nothing new wastes more of the user's attention than a paragraph does.
 
-## 怎么画
+## How to draw
 
-先确认介质：有 `mcp__visualize__show_widget` 就走 A（Claude host 通常有），没有走 B（Codex 等 host）。
+First confirm the medium: with `mcp__visualize__show_widget` take path A (Claude hosts usually have it), without it take path B (hosts such as Codex).
 
 ### A. inline widget
 
-调 `mcp__visualize__read_me`，`modules` 选最近的一个：`diagram`（计划 / 架构 / 流程，绝大多数情况）、`chart`（数据）、`mockup`（UI 方案）。它带完整设计系统。
+Call `mcp__visualize__read_me` and pick the closest `modules` value: `diagram` (plan / architecture / flow — the vast majority), `chart` (data), `mockup` (UI approaches). It brings the full design system.
 
-它的返回约 63k 字符，会超出单次工具返回上限被落盘成文件。别整篇读：先 `grep -n '^#'` 列章节，再 `sed -n` 取需要的段。Core Design System、Color palette、SVG setup 必读，具体图种按你要画的那类取。
+Its return is about 63k characters, which exceeds the single tool-return cap and gets written to a file. Do not read the whole thing: list the sections with `grep -n '^#'` first, then take the parts you need with `sed -n`. Core Design System, Color palette, and SVG setup are required reading; take the specific diagram type by what you are drawing.
 
-`c-teal` 这类 ramp class、`--text-primary` 这类 CSS 变量、`sendPrompt()` 都由 host 提供，只在 widget 里存在——盒子里塞不下的细节挂 `sendPrompt('展开第 3 步')`，让用户想看再问，这正是"最少的文字"要的效果。前提是图本身真的稀疏，别一边承诺 click-through 一边把内容全堆上去。
+Ramp classes like `c-teal`, CSS variables like `--text-primary`, and `sendPrompt()` are all provided by the host and exist only inside the widget — hang details that do not fit in a box on `sendPrompt('expand step 3')` so the user asks when they want to see them, which is exactly the effect "the least text" is after. This assumes the diagram really is sparse; do not promise click-through while piling all the content in.
 
-### B. 独立 HTML 文件
+### B. Standalone HTML file
 
-写自包含 HTML 到 scratchpad 再打开：
+Write self-contained HTML to the scratchpad, then open it:
 
 ```bash
 open "$SCRATCHPAD/visual-brief-<slug>.html"
 ```
 
-有 `SendUserFile` 就一并发过去。
+If `SendUserFile` exists, send it along too.
 
-这条路**没有** host 的 CSS 变量、ramp class 和 `sendPrompt`，全部自带：在 `:root` 定义自己的一套颜色变量，用 `@media (prefers-color-scheme: dark)` 整套覆盖一遍，并给 `body` 显式背景色。漏了这步在深色系统下就是黑字黑底——独立文件没有 host 兜底。细节没法点击展开，只能靠图下面的要点承载。
+This path has **no** host CSS variables, ramp classes, or `sendPrompt`; bring all of it yourself: define your own set of color variables on `:root`, override the whole set with `@media (prefers-color-scheme: dark)`, and give `body` an explicit background color. Miss this step and a dark system gets black text on a black background — a standalone file has no host fallback. Details cannot be expanded by clicking; only the bullets under the diagram can carry them.
 
-**不要**发布成 claude.ai Artifact——本机项目内容按公司机密处理，除非用户明确要可分享链接。两条路都不通就退回纯文字，别用 ASCII art 硬凑。
+Do **not** publish it as a claude.ai Artifact — treat local project content as company-confidential unless the user explicitly asks for a shareable link. If neither path works, fall back to plain text; do not force it with ASCII art.
 
-### 两条路共同的硬约束
+### Hard constraints shared by both paths
 
-- 图里**只放视觉元素**。标题、导语、解释性散文属于你的回复正文，不进图。
-- 深浅色都要活，颜色不写死在一处：widget 用 ramp class 和 CSS 变量，独立文件用自定义变量 + dark 覆盖。
-- 盒子副标题 ≤5 词；一张图 ≤2 个色系；一排 ≤4 个盒子，超了就换行或拆成「总览 + 细节」两张。
-- 色彩编码语义而不是顺序：同一类节点同色，中性结构用 gray。步骤 1 蓝、步骤 2 橙、步骤 3 红是噪声。
-- 无 emoji、无渐变阴影、无 `position: fixed`。
-- SVG 落笔前算一遍坐标：每个盒子宽度按最长的那行文字定，每条箭头检查有没有穿过别的盒子。压线和穿框会让图直接读起来像坏的，内容再对也救不回来。
+- Put **only visual elements** in the diagram. Titles, lead-ins, and explanatory prose belong in your reply body, not in the diagram.
+- It must work in both light and dark, and colors are not hardcoded in one place: widgets use ramp classes and CSS variables, standalone files use custom variables + a dark override.
+- Box subtitles ≤5 words; ≤2 color families per diagram; ≤4 boxes per row — past that, wrap or split into two diagrams, "overview + detail".
+- Color encodes semantics, not order: same kind of node, same color; neutral structure in gray. Step 1 blue, step 2 orange, step 3 red is noise.
+- No emoji, no gradient shadows, no `position: fixed`.
+- Work out the coordinates before drawing SVG: size each box's width by its longest line of text, and check every arrow for crossing another box. Overlaps and arrows through boxes make the diagram read as broken outright, and correct content will not save it.
 
-## 和计划流程的关系
+## Relationship to the planning flow
 
-图是给人看的摘要，不是需求真相源。Plan mode 里 `ExitPlanMode` 提交的仍然是完整文本 plan，图放在提交之前，让用户批准前一眼看清范围。用户对着图做出的决策也要落回文本 plan / ExecPlan——只活在一张图里的决策等于没记录。
+The diagram is a summary for humans, not the source of truth for requirements. In Plan mode, `ExitPlanMode` still submits the full text plan; the diagram goes before that submission so the user sees the scope at a glance before approving. Decisions the user makes off the diagram must also land back in the text plan / ExecPlan — a decision that lives only in a diagram is not recorded.

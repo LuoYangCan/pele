@@ -6,8 +6,8 @@
 #   FRAMES_DIR
 #   META_PATH
 #   FRAME_COUNT    (default 10)
-#   SCALE          (default 0.5 — 1206x2622 @3x → ~603x1311 ~700KB/帧;
-#                   传 1.0 拿原分辨率，pixel-精度对比时用)
+#   SCALE          (default 0.5 — 1206x2622 @3x → ~603x1311 ~700KB/frame;
+#                   pass 1.0 for full resolution, used for pixel-accurate comparison)
 #
 # Outputs:
 #   FRAMES_DIR=<abs>
@@ -33,16 +33,16 @@ if [[ -z "$DURATION" || "$DURATION" == "N/A" ]]; then
   exit 1
 fi
 
-# 防 0 时长（录屏立刻被打断 → ffprobe 给个非常小的数）
+# Guard against zero duration (a recording cut short immediately makes ffprobe report a tiny number)
 if python3 -c "import sys; sys.exit(0 if float('$DURATION') < 0.1 else 1)"; then
-  echo "ERR_RECORDING_TOO_SHORT:duration=$DURATION (caller 应延长 sleep)"
+  echo "ERR_RECORDING_TOO_SHORT:duration=$DURATION (the caller should lengthen its sleep)"
   exit 1
 fi
 
-# fps = FRAME_COUNT / DURATION；后接 -frames:v 限上限避免边界帧多出来一两张
+# fps = FRAME_COUNT / DURATION; the trailing -frames:v caps the count so boundary rounding cannot add an extra frame or two
 FPS=$(python3 -c "print(round(${FRAME_COUNT}/float('${DURATION}'), 4))")
 
-# 清空旧 frames（同 CASE_SLUG 重跑时）
+# Clear old frames (when the same CASE_SLUG is re-run)
 rm -f "$FRAMES_DIR"/frame-*.png
 
 ffmpeg -y -loglevel error \
@@ -54,7 +54,7 @@ ffmpeg -y -loglevel error \
 ACTUAL=$(find "$FRAMES_DIR" -name 'frame-*.png' -type f | wc -l | tr -d ' ')
 
 if [[ "$ACTUAL" -lt 2 ]]; then
-  echo "ERR_FRAME_COUNT_TOO_LOW:got $ACTUAL frames (expected ~$FRAME_COUNT) — recording 可能损坏"
+  echo "ERR_FRAME_COUNT_TOO_LOW:got $ACTUAL frames (expected ~$FRAME_COUNT) — the recording may be corrupt"
   exit 1
 fi
 

@@ -1,53 +1,53 @@
 ---
 name: exec-plan
-description: 把原生 Plan mode 或同线程 planning 结果持久化成单文件 ExecPlan。跨会话/host、长期 Goal、多个 implementation writer/worktree、不可逆迁移、审计/交接或用户明确要求计划文件时必须使用；同一 Root 同一任务一次可完成、短小直接修改、纯问答或 meta 配置不触发。
+description: Persist the result of native Plan mode or same-thread planning into a single-file ExecPlan. Required when work spans sessions/hosts, for a long-lived Goal, multiple implementation writers/worktrees, irreversible migration, audit/handoff, or when the user explicitly asks for a plan file; does not trigger when one Root can finish the same task in one pass, for short direct edits, pure Q&A, or meta configuration.
 ---
 
 # ExecPlan
 
-ExecPlan 是跨 context 的执行交接，不是每个代码任务的前置门禁。
+An ExecPlan is a cross-context execution handoff, not a precondition gate for every code task.
 
-## 何时写
+## When to write one
 
-满足任一条件时，在离开 Plan mode、进入 Default 后，第一次源码写入前写：
+Write it when any of the following holds, after leaving Plan mode and entering Default, before the first source write:
 
-- 另一个任务、host、长期 Goal 或未来 session 将继续实现；
-- 多个 implementation writer/worktree 需要共享完整决策；
-- migration/rollback 或其他不可逆步骤需要持久化操作顺序；
-- 用户要求 spec、执行计划或审计工件。
+- another task, host, long-lived Goal, or future session will continue the implementation;
+- multiple implementation writers/worktrees need to share the full set of decisions;
+- migration/rollback or another irreversible step needs its operation order persisted;
+- the user asks for a spec, execution plan, or audit artifact.
 
-短时 explorer、同一 Root 的普通实现、单个自包含 worker prompt 不触发。
+A short-lived explorer, ordinary implementation under the same Root, and a single self-contained worker prompt do not trigger it.
 
-执行中任一上述条件由假变真（发现将跨 session/host、出现第二个 writer/worktree、步骤变为不可逆、用户要求工件），或执行期已积累用户实质决策且存在跨 session 中断风险（预计本 session 无法收尾、用户明示改天/换环境继续）时，立即补写当前最终 plan 快照并按更新规则维护，不受「第一次源码写入前」时点限制。
+When any of the above flips from false to true during execution (you find the work will span sessions/hosts, a second writer/worktree appears, a step becomes irreversible, the user asks for an artifact), or substantive user decisions have accumulated during execution and there is a cross-session interruption risk (this session is not expected to finish, the user says they will continue another day / in another environment), immediately write a snapshot of the current final plan and maintain it per the update rules, unconstrained by the "before the first source write" timing.
 
-## 路径与格式
+## Path and format
 
-默认写到当前 worktree：
+Write it into the current worktree by default:
 
 ```text
 .specs/<worktree-slug>.md
 ```
 
-使用 `~/.claude/templates/exec-plan-template.md`。保持计划本身为单文件；不要创建 task/risk/amendment/decisions 子树，不维护双份 status。Figma 等二进制/测量输入可放在同级 `.specs/<slug>-assets/`，不把它当计划状态树。
+Use `~/.claude/templates/exec-plan-template.md`. Keep the plan itself a single file; do not create task/risk/amendment/decisions subtrees, and do not maintain two copies of status. Binary/measurement inputs such as Figma can go in a sibling `.specs/<slug>-assets/`; do not treat that as a plan state tree.
 
-必填内容：
+Required content:
 
-1. 目标与可观察完成态；
-2. scope、non-goals 和硬约束；
-3. 已定关键决策、接口/数据流、受影响面；
-4. milestones、依赖与 writer ownership；
-5. 验证、mandatory/optional review、即时授权边界、风险与 rollback；
-6. 当前已知事实和未完成工作。
+1. the goal and its observable done state;
+2. scope, non-goals, and hard constraints;
+3. settled key decisions, interfaces/data flow, and the affected surface;
+4. milestones, dependencies, and writer ownership;
+5. verification, mandatory/optional review, immediate-authorization boundaries, risks, and rollback;
+6. currently known facts and outstanding work.
 
-## 更新规则
+## Update rules
 
-- Root 是 canonical ExecPlan 的唯一 writer；worker 只读。
-- 行为、scope、架构、约束或验收变化时重写对应 canonical 段，并递增 `revision`；不要 append 相互冲突的历史正文。
-- reviewer 输入用绝对路径、当前 `revision` 和文件 SHA-256 绑定本计划；任何更新都使旧语义/UI review 失效。
-- 实现进度用 host 的 checklist/Todo；ExecPlan 只记录跨 context 必须知道的 milestone 状态。
-- 用户取消或替换目标时保留已有源码，不自行销毁；在 ExecPlan 顶部标记 superseded 并链接替代 plan。
-- ship 前可清理 `.specs/`；其中仍有长期项目知识时，先迁入项目 AGENTS/CLAUDE 或 trigger-on-touch docs。
+- Root is the only writer of the canonical ExecPlan; workers are read-only.
+- When behavior, scope, architecture, constraints, or acceptance change, rewrite the corresponding canonical section and increment `revision`; do not append conflicting historical text.
+- Bind reviewer input to this plan by absolute path, current `revision`, and file SHA-256; any update invalidates the old semantic/UI review.
+- Track implementation progress with the host's checklist/Todo; the ExecPlan records only the milestone status that must be known across contexts.
+- When the user cancels or replaces the goal, keep the existing source, do not destroy it on your own; mark the ExecPlan superseded at the top and link the replacement plan.
+- `.specs/` may be cleaned up before ship; when it still holds long-lived project knowledge, migrate that into the project AGENTS/CLAUDE or trigger-on-touch docs first.
 
-## 交接输入
+## Handoff input
 
-给 worker/reviewer 的 prompt 同时包含 ExecPlan 绝对路径、分配 scope、文件 ownership、base ref 和验收命令。不要只发一句“按计划做”。
+The prompt for a worker/reviewer carries the ExecPlan's absolute path, the assigned scope, file ownership, base ref, and acceptance commands together. Do not just send "follow the plan".

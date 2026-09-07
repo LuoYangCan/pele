@@ -1,5 +1,5 @@
 ---
-description: 合理提交当前改动、push 当前分支并开 PR。不跑 review、PR review 或 merge
+description: Commit the current changes sensibly, push the current branch, and open a PR. Does not run review, PR review, or merge
 ---
 
 Use the source-command-ship skill:
