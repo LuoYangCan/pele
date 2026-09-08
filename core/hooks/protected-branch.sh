@@ -6,6 +6,11 @@ input="$(cat)"
 cwd="$(jq -r '.cwd // "."' <<<"$input")"
 tool_name="$(jq -r '.tool_name // ""' <<<"$input")"
 
+case "$tool_name" in
+  apply_patch|Edit|Write|NotebookEdit) ;;
+  *) exit 0 ;;
+esac
+
 paths=()
 
 if [[ "$tool_name" == "apply_patch" ]]; then

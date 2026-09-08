@@ -4,7 +4,7 @@
     "PreToolUse": [
       {
         "_pele_id": "protected-branch",
-        "matcher": "",
+        "matcher": "Edit|Write|NotebookEdit",
         "hooks": [
           {
             "type": "command",

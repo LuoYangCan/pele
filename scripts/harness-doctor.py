@@ -18,6 +18,7 @@ from typing import Any
 STATE_NAME = ".pele-managed.json"
 MARKER_BEGIN = "<!-- pele:managed-index -->"
 MARKER_END = "<!-- /pele:managed-index -->"
+LEGACY_RELEASE_POST_TOOL_USE_HANDLER_DIGEST = "9d0b9a673a5d524cc57d9d41028b2db27da0d73060ad00c256240c11ed2a7622"
 
 
 def fail(message: str) -> None:
@@ -142,27 +143,26 @@ def managed_hooks(args: argparse.Namespace) -> None:
 
     settings_changed = False
     state_changed = False
-    post_tool_use = hooks.get("PostToolUse", [])
-    if not isinstance(post_tool_use, list):
-        fail(f"settings hook event must be an array: {settings}#PostToolUse")
-    retained_post_tool_use = []
-    for entry in post_tool_use:
-        commands = entry.get("hooks", []) if isinstance(entry, dict) else []
-        legacy = (
-            isinstance(commands, list)
-            and any(
-                isinstance(command, dict)
-                and "codex-companion.mjs" in command.get("command", "")
-                and "A Codex review just finished." in command.get("command", "")
-                for command in commands
-            )
-        )
-        if legacy:
-            print("[pele] removing legacy Pele Codex-review confirmation hook")
-            settings_changed = True
-        else:
-            retained_post_tool_use.append(entry)
-    hooks["PostToolUse"] = retained_post_tool_use
+    if "PostToolUse" in hooks:
+        post_tool_use = hooks["PostToolUse"]
+        if not isinstance(post_tool_use, list):
+            fail(f"settings hook event must be an array: {settings}#PostToolUse")
+        retained_post_tool_use = []
+        for entry in post_tool_use:
+            commands = entry.get("hooks") if isinstance(entry, dict) else None
+            if isinstance(entry, dict) and entry.get("matcher") == "Bash" and isinstance(commands, list):
+                retained_commands = []
+                for command in commands:
+                    if digest(command) == LEGACY_RELEASE_POST_TOOL_USE_HANDLER_DIGEST:
+                        print("[pele] removing legacy Pele Codex-review confirmation hook")
+                        settings_changed = True
+                        continue
+                    retained_commands.append(command)
+                retained_post_tool_use.append(dict(entry, hooks=retained_commands))
+            else:
+                retained_post_tool_use.append(entry)
+        if settings_changed:
+            hooks["PostToolUse"] = retained_post_tool_use
     for event, desired_entries in source.items():
         current_entries = hooks.setdefault(event, [])
         if not isinstance(current_entries, list):
@@ -251,25 +251,28 @@ def codex_hooks(args: argparse.Namespace) -> None:
         "command": f"bash {shlex.quote(str(target / 'hooks' / 'protected-branch.sh'))} # pele:protected-branch",
     }
     desired_hash = digest(desired)
+    desired_matcher = "^apply_patch$"
     settings_changed = False
     state_changed = False
     retained_groups = []
-    managed_present = False
+    owned_present = False
+    desired_present = False
+    migration_required = False
     for group in groups:
         if not isinstance(group, dict) or not isinstance(group.get("hooks", []), list):
             fail(f"invalid Codex hook group: {path}")
         retained_handlers = []
-        for handler in group["hooks"]:
-            command = handler.get("command", "") if isinstance(handler, dict) else ""
-            legacy = (
-                "codex-companion" in command
-                and "AskUserQuestion" in command
-                and "Do not start editing code first" in command
-            )
-            if legacy:
-                print("[pele] removing legacy Pele Codex-review confirmation hook")
+        matcher = group.get("matcher")
+        if not args.remove and matcher == "" and len(group["hooks"]) == 1:
+            handler = group["hooks"][0]
+            if codex_hook_owned(handler) and known.get("protected-branch") == digest(handler):
+                print("[pele] migrating managed Codex protected-branch hook")
+                retained_groups.append(dict(group, matcher=desired_matcher))
                 settings_changed = True
+                desired_present = True
+                migration_required = True
                 continue
+        for handler in group["hooks"]:
             if codex_hook_owned(handler):
                 recorded = known.get("protected-branch")
                 if args.remove:
@@ -278,25 +281,32 @@ def codex_hooks(args: argparse.Namespace) -> None:
                         settings_changed = True
                         continue
                     print("[pele] preserving modified Codex protected-branch hook")
-                    managed_present = True
-                elif recorded == digest(handler) or (recorded is None and digest(handler) == desired_hash):
-                    if recorded is None:
-                        known["protected-branch"] = desired_hash
-                        state_changed = True
-                    retained_handlers.append(handler)
-                    managed_present = True
-                    continue
+                    owned_present = True
+                elif recorded == digest(handler):
+                    if matcher == desired_matcher:
+                        retained_handlers.append(handler)
+                        owned_present = True
+                        desired_present = True
+                        continue
+                    if matcher == "":
+                        print("[pele] migrating managed Codex protected-branch hook")
+                        settings_changed = True
+                        migration_required = True
+                        continue
+                    print("[pele] preserving custom Codex protected-branch matcher")
+                    owned_present = True
                 else:
                     print("[pele] preserving modified Codex protected-branch hook")
-                    managed_present = True
+                    owned_present = True
             retained_handlers.append(handler)
-        if retained_handlers:
+        if retained_handlers or not group["hooks"]:
             retained_groups.append(dict(group, hooks=retained_handlers))
-    if not args.remove and not managed_present:
-        retained_groups.append({"matcher": "", "hooks": [desired]})
-        known["protected-branch"] = desired_hash
+    if not args.remove and not desired_present and (migration_required or not owned_present):
+        retained_groups.append({"matcher": desired_matcher, "hooks": [desired]})
+        if known.get("protected-branch") != desired_hash:
+            known["protected-branch"] = desired_hash
+            state_changed = True
         settings_changed = True
-        state_changed = True
     if args.remove:
         if "protected-branch" in known:
             known.pop("protected-branch")
