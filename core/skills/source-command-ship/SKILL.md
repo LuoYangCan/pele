@@ -19,6 +19,8 @@ git fetch origin
 
 Stop on `main`, `master`, or `dev`, unresolved conflicts, or an active merge/rebase/cherry-pick/revert.
 
+Resolve `base_ref` from the user or project convention, otherwise from the remote default branch. Bind its verified remote ref and branch name before using the commands below; never assume `dev`.
+
 ## Inspect and scope
 
 Inspect staged, unstaged, deleted, and untracked changes:
@@ -39,9 +41,9 @@ git ls-files --others --exclude-standard
 
 ## Final docs check
 
-Inspect `origin/dev...HEAD` plus working-tree changes. Project agent docs need sync only when the task changes agent-facing workflow, module boundaries, project structure, public contracts, tooling, commands, SDK setup, or non-obvious constraints.
+Inspect `<base_ref>...HEAD` plus working-tree changes. Project agent docs need sync only when the task changes agent-facing workflow, module boundaries, project structure, public contracts, tooling, commands, SDK setup, or non-obvious constraints.
 
-New targets/packages/subsystems, cross-platform contracts, endpoint families, or signing/build-chain changes require a concrete docs decision. Ordinary product/UI/bugfix code normally needs no docs update. If required docs are missing, propose exact paths and outline; edit and commit only after user approval. When editing docs, load `agent-readable-docs` and follow its rewrite rules: integrate new content into the document's existing structure, never just append it at the end.
+New targets/packages/subsystems, cross-platform contracts, endpoint families, or signing/build-chain changes require a concrete docs decision. Ordinary product/UI/bugfix code normally needs no docs update. If required docs are missing, propose exact paths and outline; complete required task-scoped docs under the existing ship authorization; ask only when the needed content introduces an unresolved decision. When editing docs, load `agent-readable-docs` and follow its rewrite rules: integrate new content into the document's existing structure, never just append it at the end.
 
 ## Commit
 
@@ -58,15 +60,15 @@ Use a concise one-line conventional commit matching repository style. Do not cre
 Confirm the branch has commits ahead of the base:
 
 ```bash
-git log --oneline origin/dev..HEAD
+git log --oneline <base_ref>..HEAD
 ```
 
 ## Sync and check
 
-If an upstream other than `origin/dev` exists, rebase onto it first; then run:
+If an upstream other than `<base_ref>` exists, rebase onto it first; then run:
 
 ```bash
-git rebase origin/dev
+git rebase <base_ref>
 ```
 
 On conflict, stop and report conflicted paths. Never resolve by discarding user work.
@@ -87,7 +89,7 @@ Push safely:
 git push -u origin HEAD --force-with-lease
 ```
 
-Never use plain `--force`. Use base `dev` unless the repo or user specifies another base.
+Never use plain `--force`. Use the resolved base branch for the PR.
 
 PR title: use a good leading conventional commit subject, otherwise synthesize one from the diff.
 

@@ -5,9 +5,11 @@ description: Locate a just-built iOS Simulator `.app` and the per-worktree Simul
 
 # find-ios-build-artifact
 
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
 After an iOS Simulator build finishes, find the build artifact `.app` path + bundle id + **the simulator UDID bound to the current worktree**. The caller feeds these three values to `simctl install -d <udid> <app>` / `simctl launch <udid> <bundle>` / sim-use (the `--device <udid>` argument).
 
-Parallel session isolation: each worktree uses its own sim (`sim-<slug>`), lazily managed by `~/.claude/scripts/worktree-sim.sh ensure`. Two sessions running at once will not fight over the same one.
+Parallel session isolation: each worktree uses its own sim (`sim-<slug>`), lazily managed by `"$HARNESS_ROOT/scripts/worktree-sim.sh" ensure`. Two sessions running at once will not fight over the same one.
 
 ## Triggers
 
@@ -89,7 +91,7 @@ APP_PATH="$BUILT_DIR/$APP_NAME"
 Run only when cwd is inside `.worktrees/<slug>/` (sub-worktree included). For the main repo / a non-worktree cwd, skip this step and output an empty `SIMULATOR_UDID`.
 
 ```bash
-SIM_OUT=$(bash ~/.claude/scripts/worktree-sim.sh ensure 2>&1) && {
+SIM_OUT=$(bash "$HARNESS_ROOT/scripts/worktree-sim.sh" ensure 2>&1) && {
   SIMULATOR_UDID=$(echo "$SIM_OUT" | awk -F= '/^SIMULATOR_UDID=/ {print $2}')
 } || {
   # not in a worktree (exit 1) / no .xcworkspace (exit 2) → not fatal, leave empty and let the caller use its fallback
@@ -104,11 +106,11 @@ SIM_OUT=$(bash ~/.claude/scripts/worktree-sim.sh ensure 2>&1) && {
 
 ```bash
 # create and boot an iOS 18.6 sim (coexists alongside sim-<slug>)
-bash ~/.claude/scripts/worktree-sim.sh ensure --runtime iOS-18-6
+bash "$HARNESS_ROOT/scripts/worktree-sim.sh" ensure --runtime iOS-18-6
 # → sim-<slug>-ios18-6, UDID stored in .claude/sim-udid-ios18-6
 ```
 
-Calling it with no argument stays backward compatible (defaults to the newest runtime). For `--runtime` edge cases (fallback on an incompatible device type / error when the runtime is not installed / shutdown/delete interaction), see the header comment of `~/.claude/scripts/worktree-sim.sh`.
+Calling it with no argument stays backward compatible (defaults to the newest runtime). For `--runtime` edge cases (fallback on an incompatible device type / error when the runtime is not installed / shutdown/delete interaction), see the header comment of `"$HARNESS_ROOT/scripts/worktree-sim.sh"`.
 
 ### Step 6: output
 

@@ -9,6 +9,8 @@ model: sonnet
 
 You are the conditional UI acceptance reviewer. You run only when `needs_ui_review=true` and the final candidate already has a runnable build.
 
+Resolve `HARNESS_ROOT` through the [host adapter](../rules/host-adapter.md) before calling helpers.
+
 ## Required inputs
 
 - repo/worktree, `base_ref`, final changed paths;
@@ -23,7 +25,7 @@ Return `NEEDS_INPUT` when runnable cases, the frozen design basis, or a fully bo
 ## Execution
 
 1. Read the requirements, the plan, and the frozen design artifacts; check only the visuals and interactions they explicitly require, and do not pull the mutable latest live as the baseline.
-2. In the supplied repo, recompute every SHA/stable ID from the actual plan, design artifacts, cases, build/receipt evidence, and `APP_PATH`; run `~/.claude/scripts/validation-receipt.sh --repo "$repo" artifact-digest "$APP_PATH"` to check the app digest, check the bundle ID from the app's `Info.plist`, then run `... --repo "$repo" review-fingerprint ui <key=value>...` to recompute the fingerprint. Return `NEEDS_INPUT` on a mismatch.
+2. In the supplied repo, recompute every SHA/stable ID from the actual plan, design artifacts, cases, build/receipt evidence, and `APP_PATH`; run `"$HARNESS_ROOT/scripts/validation-receipt.sh" --repo "$repo" artifact-digest "$APP_PATH"` to check the app digest, check the bundle ID from the app's `Info.plist`, then run `... --repo "$repo" review-fingerprint ui <key=value>...` to recompute the fingerprint. Return `NEEDS_INPUT` on a mismatch.
 3. Load `Skill(review-mobile-ui)` and follow its static-screenshot, motion-recording, and Figma comparison flow.
 4. You may install/launch the app, drive the Simulator, take screenshots, and record video; write evidence to `.reviews/ui-<slug>-<timestamp>/`.
 5. Re-check the app digest and the context fingerprint before summarizing; report environment failures and product mismatches separately. An environment failure is not an implementation defect.

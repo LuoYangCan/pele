@@ -9,7 +9,7 @@ Clean a target diff without changing externally observable behavior. Review in p
 
 ## Input
 
-Use the caller's target. Default to `dev...HEAD` plus staged, unstaged, and untracked changes. Read applicable `AGENTS.md`, trigger-on-touch documents, and the complete target diff before producing findings.
+Use the caller's target. Resolve `base_ref` per the shared review contract, then include `<base_ref>...HEAD` plus staged, unstaged, and untracked changes. Read applicable `AGENTS.md`, trigger-on-touch documents, and the complete target diff before producing findings.
 
 If no caller supplied a pre-cleanup snapshot, create one under `.reviews/` using the naming and snapshot commands in [`../review-contract.md`](../review-contract.md).
 
@@ -17,7 +17,7 @@ Inspect untracked files but do not edit them or create new files; record their c
 
 ## Phase 1: Read-Only Findings
 
-When subagents are available and allowed, run up to four read-only explorer passes. Otherwise perform the same passes serially:
+For a small diff, cover all four dimensions in one read-only pass. Parallelize only when distinct file domains or costly independent questions justify it; keep each prompt scoped, use the configured explorer role, and respect the available concurrency slots. Cover these dimensions:
 
 1. `reuse`: find existing APIs/helpers that replace new duplicate logic
 2. `simplification`: reduce unnecessary branches, wrappers, comments, and indirection
@@ -51,7 +51,7 @@ Do not let multiple writers edit overlapping files. If local rules require imple
 
 ## Verification and Return
 
-When called by `source-command-review-codex`, let the caller own build verification. When called standalone, run only the repository's required post-change build command; do not run lint, tests, or format-fix unless requested.
+When called by `source-command-review-codex`, let the caller own build verification. When called standalone, follow the repository's required checks for the changed files; use meta-only validation when no production code changed. Do not skip project-required lint or add unrelated tests/builds.
 
 Return the shared `fixed` and `skipped` lists plus:
 

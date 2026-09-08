@@ -2,7 +2,7 @@
 
 > Volcanic harness for coding agents — opinionated rules, agents, and workflow that put a strong model in charge of planning and a general model in charge of typing.
 
-Pele is a set of global rules, subagents, slash commands, and hooks distilled from real day-to-day use. It installs for **Claude Code, Codex, or both** — the same workflow content, mapped onto each host's own config layout. Its **plan-first, model-tiered delivery** keeps a strong planning-tier model as the Root: native Plan mode produces a decision-complete plan, a general-model `implementer` subagent writes the code inside frozen boundaries, and the Root reviews the diff, integrates, verifies, and commits each feature unit — with independent verifier / UI-review gates when risk warrants.
+Pele is a set of global rules, subagents, slash commands, and hooks distilled from real day-to-day use. It installs for **Claude Code, Codex, or both** — the same workflow content, mapped onto each host's own config layout. Its **plan-first, model-tiered delivery** keeps a strong planning-tier model as the Root: native Plan mode produces a decision-complete plan, a general-model `implementer` subagent writes the code inside frozen boundaries, and the Root reviews, integrates, and verifies each feature unit — with independent verifier / UI-review gates when risk warrants. Commits follow project policy and explicit user authorization.
 
 Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian volcano goddess: she controls the eruption.
 
@@ -17,10 +17,10 @@ Named after [Pele](https://en.wikipedia.org/wiki/Pele_(deity)), the Hawaiian vol
 | Index file | `CLAUDE.md` | `AGENTS.md` |
 | Agent definitions | `agents/*.md` | `agents/*.toml` |
 | Slash commands | `commands/` | `prompts/` |
-| Hooks | merged into `settings.json` | not applicable |
-| Per-project install | `--project <path>` | global only |
+| Hooks | managed entries merged into `settings.json` | managed entries merged into `hooks.json`; review and enable them with Codex `/hooks` |
+| Per-project install | `--project <path>` | `--project <path>` |
 
-`--host both` installs for both. Skills written for one host's tooling (`codex-simplify`, the Codex review backend) are filtered out of the other host's install automatically.
+`--host both` installs for both. Skills written for one host's tooling (`codex-simplify`, the Codex review backend) are filtered out of the other host's install automatically. Codex `/review` uses the Codex review backend; Claude Code retains its native legacy backend.
 
 Drop-in install adds the following under the host's config dir:
 
@@ -28,7 +28,7 @@ Drop-in install adds the following under the host's config dir:
 |---|---|
 | **index** | `CLAUDE.md` / `AGENTS.md` — progressively discloses rules / skills / agents on demand |
 | **rules/** | Workflow policies (verification ladder, iteration checkpoints, commit style) plus portable Swift/iOS guidance |
-| **agents/** | `implementer` · `verifier` · `ui-reviewer` · `command-runner` (shipped as both `.md` and `.toml`) |
+| **agents/** | `implementer` · `verifier` · `ui-reviewer` · `command-runner`; Codex also generates `explorer` and `pr-reviewer` |
 | **commands/** | `/openpr` · `/ship` · `/review` · `/pr-review` · `/cleanup-and-exit` (`/clean-and-exit` alias) |
 | **skills/** | `plan-first-delivery` and worktree orchestration, architecture/review helpers, optional iOS UI and Figma workflows |
 | **scripts/** | `run-ios.sh` · `worktree-sim.sh` · `worktree-bootstrap.sh` · `validation-receipt.sh` · `trust-dir.sh` and hook helpers |
@@ -83,36 +83,40 @@ Symlinks `core/` into the host config dir (`~/.claude/`, or `~/.codex/` with `--
 
 #### Project (`--project <path>`)
 
-Symlinks `core/` into `<path>/.claude/`. Pele's rules / agents / skills only apply when Claude Code opens that one project. Use this when you want to try pele on a single repo without affecting your global setup, or when different repos need different harness versions.
+Symlinks host content into `<path>/.claude/` and/or `<path>/.codex/`. A Codex project installation also exposes skills through `<path>/.agents/skills/`. Pele's rules / agents / skills then apply only when that host opens the project.
 
 ```bash
 ./install.sh --project /path/to/your-project
 ./install.sh --project /path/to/your-project --dry-run
 ```
 
-After install, **manually add this line** to the end of `<path>/CLAUDE.md` (or `<path>/AGENTS.md`):
-
-```
-@.claude/pele-index.md
-```
-
-Pele installs `<path>/.claude/pele-index.md` as the entry point — but `install.sh` deliberately does **not** modify your `CLAUDE.md` / `AGENTS.md`. Without that one `@` line, Claude Code won't pick up the index automatically.
+For Codex, the installer appends one marked managed entry to `<path>/AGENTS.md` that reads `.codex/pele-index.md`; it leaves all existing instructions intact and removes only that entry on uninstall. Claude Code keeps its existing project entry-point behavior and installs `.claude/pele-index.md` without replacing a root instruction file.
 
 Pass `--figma` only in global mode; project mode deliberately does not merge global hooks.
 
 ### What install does
 
-1. **Symlinks** `core/` (and `--figma` content if enabled) into the target `.claude/` directory — `~/.claude/` in global mode, `<path>/.claude/` in project mode. Editing an already-linked source takes effect immediately; adding or removing top-level entries requires reinstalling.
-2. **Backs up** any pre-existing files in the target directory to `<target>.backup-<timestamp>/` before linking. Nothing is destroyed.
-3. **Merges hooks** into the target `settings.json` using `jq`. Your `model`, `mcpServers`, `permissions`, and other keys are preserved. The pre-merge `settings.json` is also backed up.
+1. **Symlinks** host content into the selected `.claude/` and/or `.codex/` directory. Codex project skills are also linked under `.agents/skills/`. Editing a linked source takes effect immediately; adding or removing top-level entries requires reinstalling.
+2. **Backs up** conflicting files before linking, including links from an older Pele checkout. Reinstallation is idempotent without claiming unrelated links.
+3. **Merges hooks** by stable Pele ownership. Third-party hooks, unknown settings, and a user-modified Pele hook are preserved. Codex receives an owned `hooks.json` entry for the protected-branch script, while `/hooks` remains the user's trust and enablement control.
 
    For a conservative permission-policy starter, see `core/permissions/settings.permissions.json`. It is **not** auto-merged; add only the command patterns you trust.
 
 ### Requirements
 
 - macOS / Linux (zsh or bash)
-- `git`, `jq` (for hook merging — optional but recommended)
+- `git`, `jq` (required by the protected-branch hook), and Python 3.11+. Set `PYTHON_BIN=/path/to/python3.11-or-newer` when the default `python3` is older.
 - At least one host: [Claude Code](https://docs.anthropic.com/claude/docs/claude-code) or Codex
+
+### Model policy and doctor
+
+Codex agent models are rendered from the shared policy. See [docs/model-policy.md](docs/model-policy.md) for override precedence and the full schema. Inspect a resolved role without changing config:
+
+```bash
+python3 "$HARNESS_ROOT/scripts/model-policy.py" show implementer
+```
+
+Run `scripts/check-install.sh` to validate temporary Claude/Codex installs, hooks, generated TOML, dry-run behavior, and uninstall ownership.
 
 ## Plan-first delivery
 
@@ -168,7 +172,14 @@ Pele uses **symlinks**, so you customize by editing the source files in `<pele-c
 - Add recommended permissions → edit `core/permissions/settings.permissions.json`, then copy entries into your `~/.claude/settings.json`'s `permissions.allow` (this file is not auto-merged by `install.sh`)
 - Disable a rule → just delete the symlink in `~/.claude/rules/` (or the source file in `<pele-checkout>/core/rules/`); the index in `CLAUDE.md` is progressive-disclosure, missing files are silently ignored
 
-For project-specific overrides (per-repo CLAUDE.md, per-repo hooks), use the standard Claude Code mechanisms in `<repo>/.claude/` — they layer on top of pele's globals.
+For project-specific overrides, use the host's standard `.claude/` or `.codex/` mechanisms. To locate portable helpers from an installed shell command, initialize the root in that command:
+
+```bash
+HARNESS_ROOT="$("${CODEX_HOME:-$HOME/.codex}"/scripts/harness-root.sh)"
+"$HARNESS_ROOT/scripts/validation-receipt.sh" --help
+```
+
+Do not rely on a previous command's shell environment; initialize `HARNESS_ROOT` again for each command and pass it to subagents when they need the same checkout.
 
 ## Maintainer: syncing personal `~/.claude/` → public `pele/core/`
 
@@ -199,7 +210,7 @@ git pull origin main          # pull the new pele
 #  ./uninstall.sh --project /path/to/your-project && ./install.sh --project /path/to/your-project   (project mode equivalent)
 ```
 
-`uninstall.sh` walks every symlink under the target `.claude/` and removes any that points into `<pele-checkout>` — including symlinks whose target file no longer exists (e.g. `~/.claude/rules/commit-message.md` → `<pele-checkout>/core/rules/commit-message.md` after that source file is deleted upstream). This is why running `uninstall.sh` before `install.sh` is recommended for upgrades, not just for full removal.
+`uninstall.sh` removes links that still point at its own checkout, removes only unmodified managed hook entries, and removes its marked AGENTS.md entry while preserving surrounding user text. It also asks the model-policy helper to remove only generated agent TOML files whose recorded hash still matches.
 
 Existing symlink targets update after `git pull`, but new or removed top-level entries and hook changes require reinstalling.
 
@@ -210,7 +221,7 @@ Existing symlink targets update after `git pull`, but new or removed top-level e
 <pele-checkout>/uninstall.sh --project /path/to/your-project   # project mode
 ```
 
-Removes every symlink in the target `.claude/` directory that points into `<pele-checkout>`. Does **not** auto-restore from `<target>.backup-*/` — those are kept for you to restore manually if needed:
+Removes only links pointing into `<pele-checkout>`, unmodified managed hooks, and its managed AGENTS.md entry. Does **not** auto-restore from `<target>.backup-*/` — those are kept for you to restore manually if needed:
 
 ```bash
 # Global mode example

@@ -5,7 +5,9 @@ description: Build, install, and launch the iOS app on a connected real iPhone. 
 
 # run-device
 
-Build + install + launch the current iOS code on **a connected real device**. The mechanical part lives in the shared script `~/.claude/scripts/run-ios.sh` (`--target device`, shared with `open-sim`); this skill only calls it and relays the result.
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
+Build + install + launch the current iOS code on **a connected real device**. The mechanical part lives in the shared script `"$HARNESS_ROOT/scripts/run-ios.sh"` (`--target device`, shared with `open-sim`); this skill only calls it and relays the result.
 
 ## When to use
 
@@ -23,14 +25,14 @@ Not for: the simulator (use `open-sim`) · macOS · release / archive.
 ## Run
 
 ```bash
-bash ~/.claude/scripts/run-ios.sh --target device
+bash "$HARNESS_ROOT/scripts/run-ios.sh" --target device
 ```
 
 The script will: auto-select the CoreDevice `identifier` of **the single reachable physical device** (first excluding simulators registered as CoreDevice via `hardwareProperties.reality == physical`, then narrowing by reachability; `identifier` is a UUID, e.g. `25CC377B-...`) → `<IOS_BUILD_DESTINATION>="platform=iOS,id=<id>" just build-ios` → locate the build artifact (scans `Build/Products/*-iphoneos/`, takes the newest `.app`; the configuration name is project-defined and can change, so `Debug-` is not hardcoded) → read the bundle id from the artifact's `Info.plist` → `devicectl device install app` + `process launch` → print the `----- run-ios result -----` result block.
 
 - **Multiple reachable** physical devices connected → the script errors, lists only the reachable candidates for the user to pick, then pass the id:
   ```bash
-  bash ~/.claude/scripts/run-ios.sh --target device --device-id <identifier>
+  bash "$HARNESS_ROOT/scripts/run-ios.sh" --target device --device-id <identifier>
   ```
 - Already built and you only want to reinstall → add `--no-build`.
 

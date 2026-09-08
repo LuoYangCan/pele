@@ -1,5 +1,7 @@
 # Review binding (conditional acceptance)
 
+Resolve installed paths per the [host adapter](../../../rules/host-adapter.md) before running helpers.
+
 Root reads this file in full after `needs_independent_review` / `needs_ui_review` is hit and objective verification PASSes; ordinary tasks do not read it.
 
 ## Candidate identity and evidence binding
@@ -15,7 +17,7 @@ An objective receipt only proves the current Git-visible source. Before launchin
 The semantic snapshot uses the final candidate and excludes acceptance temp directories:
 
 ```bash
-~/.claude/scripts/review-input-snapshot.sh \
+"$HARNESS_ROOT/scripts/review-input-snapshot.sh" \
   --repo "$repo" "$base_ref" "<slug>"
 ```
 

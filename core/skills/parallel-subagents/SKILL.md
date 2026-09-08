@@ -15,6 +15,8 @@ Parallelism is an execution strategy, not a fixed process stage. Root always own
 
 Run serially when: the shared API is still evolving, one task consumes another's new results, the same file would be modified, merge cost outweighs the concurrency gain, or a single Root can finish it quickly.
 
+Use the installed role policy. Prefer a self-contained narrow prompt and no full-history fork when the task does not need conversation history; preserve the exact user constraints and required docs. Full-history forks are for tasks that depend on prior decisions. Bound returned summaries and do not start more agents than the host permits.
+
 ## Freeze before dispatch
 
 Root spells out in the prompt:

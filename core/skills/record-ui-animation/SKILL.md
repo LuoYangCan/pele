@@ -5,6 +5,8 @@ description: Capture iOS/Android Simulator motion as keyframe PNGs for agent ins
 
 # Record UI animation
 
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
 This skill only captures the recording and keyframes; it does not navigate, trigger actions or decide PASS/FAIL. The caller drives the app per the final plan's dynamic cases and judges by reading the frame sequence.
 
 ## Inputs
@@ -29,7 +31,7 @@ eval "$(WORKTREE_SLUG="$WORKTREE_SLUG" CASE_SLUG="$CASE_SLUG" \
   DEVICE_UDID="$DEVICE_UDID" \
   EXPECTED_DURATION_SECONDS="${EXPECTED_DURATION_SECONDS:-3}" \
   FRAME_COUNT="${FRAME_COUNT:-10}" PLATFORM="${PLATFORM:-ios}" \
-  bash ~/.claude/skills/record-ui-animation/scripts/prepare.sh)"
+  bash "$HARNESS_ROOT/core/skills/record-ui-animation/scripts/prepare.sh")"
 ```
 
 Returns `RECORDING_PATH`, `FRAMES_DIR`, `META_PATH` and `DEVICE_UDID`. When dependency or device validation fails, degrade per the script's error code.
@@ -40,14 +42,14 @@ Start recording only after reaching the animation's starting point; keep navigat
 
 ```bash
 eval "$(DEVICE_UDID="$DEVICE_UDID" RECORDING_PATH="$RECORDING_PATH" \
-  bash ~/.claude/skills/record-ui-animation/scripts/record-xcrun.sh)"
+  bash "$HARNESS_ROOT/core/skills/record-ui-animation/scripts/record-xcrun.sh")"
 
 # The caller performs the single trigger action specified by the final plan here; every sim-use carries --device.
 
 sleep <expected-duration-plus-buffer>
 
 REC_PID="$REC_PID" RECORDING_PATH="$RECORDING_PATH" \
-  bash ~/.claude/skills/record-ui-animation/scripts/stop-xcrun.sh
+  bash "$HARNESS_ROOT/core/skills/record-ui-animation/scripts/stop-xcrun.sh"
 ```
 
 `stop-xcrun.sh` uses SIGINT so simctl finalizes the MP4; do not switch to SIGTERM/KILL.
@@ -57,7 +59,7 @@ REC_PID="$REC_PID" RECORDING_PATH="$RECORDING_PATH" \
 ```bash
 RECORDING_PATH="$RECORDING_PATH" FRAMES_DIR="$FRAMES_DIR" \
   META_PATH="$META_PATH" FRAME_COUNT="${FRAME_COUNT:-10}" SCALE=0.5 \
-  bash ~/.claude/skills/record-ui-animation/scripts/extract.sh
+  bash "$HARNESS_ROOT/core/skills/record-ui-animation/scripts/extract.sh"
 ```
 
 Returns `FRAMES_DIR`, the actual frame count, the duration and `META_PATH`. The default 0.5 scale keeps the multi-image context small; use 1.0 only for pixel-level issues.

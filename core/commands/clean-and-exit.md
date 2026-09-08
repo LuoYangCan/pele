@@ -4,4 +4,4 @@ description: Alias for cleanup-and-exit; clean up the current worktree before ex
 
 Use the cleanup-and-exit skill:
 
-`~/.claude/skills/cleanup-and-exit/SKILL.md`
+`$HARNESS_ROOT/core/skills/cleanup-and-exit/SKILL.md`

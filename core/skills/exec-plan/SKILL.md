@@ -5,6 +5,8 @@ description: Persist the result of native Plan mode or same-thread planning into
 
 # ExecPlan
 
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
 An ExecPlan is a cross-context execution handoff, not a precondition gate for every code task.
 
 ## When to write one
@@ -28,7 +30,7 @@ Write it into the current worktree by default:
 .specs/<worktree-slug>.md
 ```
 
-Use `~/.claude/templates/exec-plan-template.md`. Keep the plan itself a single file; do not create task/risk/amendment/decisions subtrees, and do not maintain two copies of status. Binary/measurement inputs such as Figma can go in a sibling `.specs/<slug>-assets/`; do not treat that as a plan state tree.
+Use `"$HARNESS_ROOT/core/templates/exec-plan-template.md"`. Keep the plan itself a single file; do not create task/risk/amendment/decisions subtrees, and do not maintain two copies of status. Binary/measurement inputs such as Figma can go in a sibling `.specs/<slug>-assets/`; do not treat that as a plan state tree.
 
 Required content:
 

@@ -1,0 +1,17 @@
+{
+  "id": "overlay-precedence",
+  "role": "verifier",
+  "prompt": "Resolve the effective model and effort independently.",
+  "answers": [
+    "cli-model/high",
+    "cli-model/xhigh",
+    "repo-model/xhigh"
+  ],
+  "expected": {
+    "answer": "cli-model/xhigh",
+    "evidence_contains": []
+  },
+  "files": {
+    "fixture.txt": "Default: model=base-model, effort=high. Local: model=local-model. Repository: model=repo-model, effort=xhigh. Explicit CLI: model=cli-model only. Each field resolves in order: default, local, repository, explicit CLI.\n"
+  }
+}

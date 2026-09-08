@@ -36,7 +36,7 @@ Root reports: observable behavior, verification results, decision audit, docs di
 | `verifier` / `ui-reviewer` | mid tier | independent acceptance when their gate hits |
 | `command-runner` | small tier | mechanical command execution with trimmed logs |
 
-Each agent ships twice: `core/agents/<name>.md` for Claude Code and `core/agents/<name>.toml` for Codex. `install.sh` links only the extension the target host reads, so the two never collide.
+Each agent ships twice: `core/agents/<name>.md` for Claude Code and `core/agents/<name>.toml` for Codex. `install.sh` links only the extension the target host reads, then the model-policy helper renders Codex TOML with its absolute harness root.
 
 The implementer never commits, never runs final verification, and returns material decisions to the Root instead of deciding them.
 
@@ -48,14 +48,14 @@ The implementer never commits, never runs final verification, and returns materi
 
 ## Enforcement
 
-1. A `PreToolUse` hook blocks Edit/Write on protected branches (main / master / dev); changes go through `.worktrees/` isolation.
+1. The protected-branch script blocks direct edit tools on protected branches (main / master / dev), including apply_patch payloads. Claude installs it as a managed hook entry; Codex installs the script for the user to enable through `/hooks`.
 2. `plan-first-delivery` defines the state machine, orthogonal gates, delegation, and failure routing; `post-change-verify` defines the verification ladder and receipt invalidation.
 3. Agent definitions constrain read/write scope and structured returns.
 
 ## Installed layout
 
 ```text
-~/.claude/
+~/.claude/ or ${CODEX_HOME:-~/.codex}/
 ├── CLAUDE.md
 ├── rules/
 ├── agents/
@@ -66,4 +66,4 @@ The implementer never commits, never runs final verification, and returns materi
 └── settings.json
 ```
 
-Content entries are symlinked to `<pele-checkout>`; hooks are merged into `settings.json`. Pulling changes updates existing symlink targets immediately. Re-run `install.sh` when a release adds or removes top-level rules, agents, commands, skills, templates, scripts, or hook definitions.
+Content entries are symlinked to `<pele-checkout>`. Claude hook entries and Codex `hooks.json` entries are merged by Pele ownership instead of replacing complete hook configuration; `/hooks` remains the user-facing trust control for Codex. Pulling changes updates existing symlink targets immediately. Re-run `install.sh` when a release adds or removes top-level rules, agents, commands, skills, templates, scripts, or hook definitions.

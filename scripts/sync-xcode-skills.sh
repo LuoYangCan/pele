@@ -29,28 +29,54 @@ log "exporting from $(basename "$APP") ($(xcode_short_version "$APP"))"
 
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-( cd "$STAGE" && "$AGENT" skills export >/dev/null )
+# An unavailable Xcode MCP service can leave export waiting indefinitely.
+python3 - "$AGENT" "$STAGE" <<'PY_EXPORT'
+import subprocess, sys
+try:
+    result = subprocess.run([sys.argv[1], "skills", "export"], cwd=sys.argv[2], stdout=subprocess.DEVNULL, timeout=30)
+    sys.exit(result.returncode)
+except subprocess.TimeoutExpired:
+    print("[sync-xcode-skills] export timed out after 30s; existing skills were preserved", file=sys.stderr)
+    sys.exit(124)
+PY_EXPORT
 
 SRC="$STAGE/xcode-skills"
 [ -d "$SRC" ] || fail "export produced no xcode-skills directory"
 
+SKILLS_DIR="$ROOT/core/skills"
 NAMES=()
 for dir in "$SRC"/*/; do
   [ -f "$dir/SKILL.md" ] || continue
   name="$(basename "$dir")"
-  dest="$ROOT/skills/$name"
-  rm -rf "$dest"
-  cp -R "$dir" "$dest"
-  # Xcode exports read-only files; make them writable so the next sync can replace them.
-  chmod -R u+w "$dest"
   NAMES+=("$name")
 done
-
 [ "${#NAMES[@]}" -gt 0 ] || fail "export contained no SKILL.md"
 
 BEGIN='# >>> xcode-provided skills (managed by scripts/sync-xcode-skills.sh) >>>'
 END='# <<< xcode-provided skills <<<'
 IGNORE="$ROOT/.gitignore"
+if [ -f "$IGNORE" ]; then
+  while IFS= read -r old; do
+    [[ "$old" =~ ^/(core/)?skills/[a-zA-Z0-9_-]+/$ ]] || fail "invalid managed skill path: $old"
+    old_name="$(basename "$old")"
+    if [ ! -f "$SRC/$old_name/SKILL.md" ] || [ "$ROOT$old" != "$SKILLS_DIR/$old_name/" ]; then
+      [ -z "$(git -C "$ROOT" ls-files -- "${old#/}")" ] || fail "refusing to remove tracked skill: $old"
+      rm -rf "$ROOT$old"
+    fi
+  done < <(awk -v b="$BEGIN" -v e="$END" '$0 == b {active=1; next} $0 == e {active=0} active' "$IGNORE")
+fi
+
+mkdir -p "$SKILLS_DIR"
+for name in "${NAMES[@]}"; do
+  dir="$SRC/$name"
+  dest="$SKILLS_DIR/$name"
+  [ -z "$(git -C "$ROOT" ls-files -- "${dest#"$ROOT"/}")" ] || fail "refusing to replace tracked skill: $dest"
+  rm -rf "$dest"
+  cp -R "$dir" "$dest"
+  # Xcode exports read-only files; make them writable so the next sync can replace them.
+  chmod -R u+w "$dest"
+done
+
 KEPT="$(mktemp)"
 trap 'rm -rf "$STAGE" "$KEPT"' EXIT
 
@@ -73,7 +99,7 @@ done
   cat "$KEPT"
   [ -s "$KEPT" ] && printf '\n'
   printf '%s\n' "$BEGIN"
-  printf '/skills/%s/\n' "${NAMES[@]}"
+  printf '/core/skills/%s/\n' "${NAMES[@]}"
   printf '%s\n' "$END"
 } > "$IGNORE"
 

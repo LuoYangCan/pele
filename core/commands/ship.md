@@ -4,4 +4,4 @@ description: Wrap up — commit the current changes sensibly, push the current b
 
 Use the source-command-ship skill:
 
-`~/.claude/skills/source-command-ship/SKILL.md`
+`$HARNESS_ROOT/core/skills/source-command-ship/SKILL.md`

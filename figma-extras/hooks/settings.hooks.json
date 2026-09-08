@@ -3,6 +3,7 @@
   "hooks": {
     "PreToolUse": [
       {
+        "_pele_id": "figma-design-context-clarification",
         "_comment": "When Claude calls get_design_context on a Figma node, prompt it to clarify ambiguous parts of the static design before generating code. Static designs miss loading/empty/error states, interactions, and animation details — those must come from the user.",
         "matcher": "mcp__plugin_figma_figma__get_design_context",
         "hooks": [

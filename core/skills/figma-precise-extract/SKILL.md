@@ -5,6 +5,8 @@ description: Extract measurement-grade exact sizes, spacing and tokens from a Fi
 
 # figma-precise-extract
 
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
 This skill bakes the output of four tools into a measurement-grade frozen HTML: structure comes from `get_design_context`, exact numbers from `get_metadata` and `get_variable_defs`, converted to pt by the design base scale. The implementation owner reads the frozen artifacts and does not re-fetch live data while writing code.
 
 ## Triggers / does not trigger
@@ -49,7 +51,7 @@ Baking = **take the structural skeleton from get_design_context and override its
 
 6. **Screenshot is visual reference only** ← `get_screenshot({nodeId, maxDimension: 4096})` frozen as PNG: strokes (outside/center), shadows and blur are drawn outside the layout box → they do not count toward size. **PNG = visual source of truth** (color / shadow / gradient / rendered look), **HTML = measurement source of truth** (size / spacing / pt).
 
-7. **Icons specifically (frame vs glyph)**: a Figma icon is usually a fixed outer frame (24×24) wrapping a smaller glyph (~20) + optical padding. metadata reports the **outer frame**, the exported SVG viewBox reports the **glyph**. Set the box to the metadata outer-frame size (converted to pt); record "outer frame X×X / glyph ≈ Y" in an HTML comment. With Code Connect, prefer resolving the icon to the real component over re-deriving it from geometry. Export bitmap assets once each at @1x/2x/3x into the asset catalog (see `~/.claude/skills/figma-asset-export/SKILL.md`), do not convert them inside the HTML.
+7. **Icons specifically (frame vs glyph)**: a Figma icon is usually a fixed outer frame (24×24) wrapping a smaller glyph (~20) + optical padding. metadata reports the **outer frame**, the exported SVG viewBox reports the **glyph**. Set the box to the metadata outer-frame size (converted to pt); record "outer frame X×X / glyph ≈ Y" in an HTML comment. With Code Connect, prefer resolving the icon to the real component over re-deriving it from geometry. Export bitmap assets once each at @1x/2x/3x into the asset catalog (see `"$HARNESS_ROOT/core/skills/figma-asset-export/SKILL.md"`), do not convert them inside the HTML.
 
 ## Large-node degradation fallback (when design_context returns sparse data)
 

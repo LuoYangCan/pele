@@ -5,6 +5,8 @@ description: Codex backend for `/review`-style branch cleanup plus report-only c
 
 # Source Command Review Codex
 
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
 Read [`../review-contract.md`](../review-contract.md) and [`../codex-simplify/SKILL.md`](../codex-simplify/SKILL.md) completely, then run the contract's `active-command` mode with the Codex backend below.
 
 Do not call Claude `/simplify` or `/code-review`. If `codex exec review` or `--output-schema` is unavailable, stop and report that the Codex reviewer backend is unavailable; do not silently downgrade to manual review.
@@ -12,19 +14,18 @@ Do not call Claude `/simplify` or `/code-review`. If `codex exec review` or `--o
 ## Codex Backend
 
 1. Freeze the fingerprint, changed paths, relevant untracked product paths, and pre-cleanup snapshot. Create the report path from the shared contract.
-2. Run `codex-simplify` on `dev...HEAD plus staged, unstaged, and untracked working-tree changes`. Require the shared cleanup result schema.
+2. Run `codex-simplify` on `<base_ref>...HEAD plus staged, unstaged, and untracked working-tree changes`. Require the shared cleanup result schema.
 3. If cleanup changed code, start the shared build verification.
 4. Recompute the fingerprint after cleanup; this is the reviewer fingerprint. Assemble a self-contained prompt containing the frozen scope, applicable latest plan/ExecPlan and rules, cleanup result, and the contract's reviewer checklist + exact raw JSON schema. Pass it through stdin to one native Custom review target:
 
    ```bash
-   codex -a never -s read-only exec review \
-     -m gpt-5.6-sol \
-     -c 'model_reasoning_effort="high"' \
-     --output-schema "$HOME/.claude/skills/review-result.schema.json" \
+   python3 "$HARNESS_ROOT/scripts/model-policy.py" codex branch-review --repo "$repo" -- \
+     -a never -s read-only exec review \
+     --output-schema "$HARNESS_ROOT/core/skills/review-result.schema.json" \
      -o "$temp_result" -
    ```
 
-   Use `xhigh` only when a risk gate in `review-contract.md` applies.
+   When a risk gate in `review-contract.md` applies, add `--effort xhigh` before the wrapper’s `--` separator only if the resolved policy effort is lower. Preserve a higher configured effort.
 
    Tell the reviewer to inspect only the frozen target and allowed direct caller/callee context. Repeat the contract's scanner/cache/network prohibitions. Do not combine the custom prompt with `--base`, `--commit`, or `--uncommitted`; those selectors are mutually exclusive with custom instructions.
 

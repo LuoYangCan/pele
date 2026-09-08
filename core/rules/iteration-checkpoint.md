@@ -4,7 +4,7 @@ When consecutive turns on the same request reach the threshold and expectations 
 
 ## 3-turn checkpoint: stop and ask
 
-More than **3 consecutive turns** on the same request and the user still has not clearly signaled satisfaction (still repeatedly pointing out problems / repeatedly revising / expressing dissatisfaction) → you must stop and clarify with `AskUserQuestion` before continuing.
+More than **3 consecutive turns** on the same request and the user still has not clearly signaled satisfaction (still repeatedly pointing out problems / repeatedly revising / expressing dissatisfaction) → you must stop and clarify with [the host question tool](host-adapter.md) before continuing.
 
 What to clarify:
 
@@ -19,7 +19,7 @@ If expectations are still unmet after **more than 7 turns**, switch from "blind 
 1. Re-read the text of the user's **original request**
 2. List the approaches already tried + the specific reason each one failed
 3. Diagnose the root cause: misread requirement / wrong technical approach / wrong execution detail?
-4. Use `AskUserQuestion` to align the new direction and assumptions with the user
+4. Use [the host question tool](host-adapter.md) to align the new direction and assumptions with the user
 5. After aligning, re-evaluate the existing code: what to keep, what to rewrite. **Do not discard everything automatically**; rewrite wholesale only when the user explicitly says "start over completely"
 
 For coding tasks running `plan-first-delivery`, steps 4–5 land as going back to DISCOVER/PLAN_READY to produce a replacement plan; do not build a second alignment process.

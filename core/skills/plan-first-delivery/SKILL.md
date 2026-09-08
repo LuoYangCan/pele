@@ -5,7 +5,7 @@ description: Main code-delivery flow for Default mode. Use when a request will l
 
 # Plan-first delivery
 
-Native Plan mode turns the requirement into a decision-complete plan; the same Root in Default mode takes over delivery. No second plan, file-existence checkpoint or fixed role pipeline is added between them. Model tiering: Root runs on the planning-tier strong model (Claude host: `/model fable`) and owns the plan, shared decisions, diff review, integration and verification; code writes are delegated by default to `implementer` on the implementation-tier model (model in `agents/implementer.md`).
+Native Plan mode turns the requirement into a decision-complete plan; the same Root in Default mode takes over delivery. No second plan, file-existence checkpoint or fixed role pipeline is added between them. Model tiering: Root runs on the planning-tier strong model (Claude host: `/model fable`) and owns the plan, shared decisions, diff review, integration and verification; code writes are delegated by default to `implementer` on the implementation-tier model (Claude models live in agent Markdown; Codex uses the [model policy](../../../docs/model-policy.md)). Semantic verification must not use a weaker tier than implementation; recheck that constraint when changing either role.
 
 ## Entry routing
 
@@ -14,7 +14,7 @@ Native Plan mode turns the requirement into a decision-complete plan; the same R
 | Native Plan mode | Do not run this skill; stay read-only. The final plan is the requirement source of truth for the same task |
 | Default, user explicitly asks to execute the same task's final plan | Go straight to execution; do not re-plan, do not copy it into a second plan file |
 | Default, narrow goal with no decision that would change the outcome | Micro-changes only: single file or few lines, no new observable behavior, one unambiguous implementation; or the user's instruction is already specific enough that the implementation is uniquely determined and introduces no new observable behavior. Confirm entry points and impact scope read-only; use `update_plan` for multi-step tasks, then implement. New features, multi-file changes, multiple reasonable implementations or behavior changes, and any case where you cannot tell whether a decision of the next row's kind exists, are handled by the next row |
-| Default, product behavior, scope, architecture, hard constraint or acceptance decisions remain | First use `ToolSearch` to confirm whether `EnterPlanMode` exists — it is often a deferred tool that does not appear in the loaded tool list, and its absence does not mean the host lacks support. If it exists, Root calls it immediately to enter Plan mode (after a user refusal, handle it as a read-only planning turn); do not substitute "wait for the user to switch manually" for the call. Only after confirming it does not exist does the same Root do a read-only planning turn and wait for explicit execution authorization |
+| Default, product behavior, scope, architecture, hard constraint or acceptance decisions remain | Use available planning/question tools per the [host adapter](../../rules/host-adapter.md). Clarify decisions that change the result; once the goal is clear and implementation is authorized, continue without a second GO turn merely because mode switching is unavailable |
 | User explicitly asks for an implementation worker | Treat it as an implementation delegation; Root still owns boundaries, integration and final verification |
 
 Pure Q&A, read-only diagnosis, status queries, changes to global rule / skill / hook / settings, and the internal flows of `/ship`, `/review`, `/pr-review` do not trigger.
@@ -27,7 +27,7 @@ Pure Q&A, read-only diagnosis, status queries, changes to global rule / skill / 
 DISCOVER (Plan/read-only)
   ├─ material decision → WAIT_INPUT → DISCOVER
   └─ decision complete → PLAN_READY
-PLAN_READY + explicit execute request
+PLAN_READY + existing implementation authorization
   → EXECUTE
 EXECUTE + next action needs fresh authority
   → AWAIT_ACTION_APPROVAL
@@ -43,7 +43,7 @@ Root always owns user interaction, the final plan, shared decisions, main-worksp
 
 ## Before implementation starts
 
-1. Confirm the user has authorized the current implementation; a Plan mode final plan counts as implementation authorization for local, reversible source changes only after the user switches back to Default and asks to execute.
+1. Resolve the existing implementation authorization per the host adapter. Stay read-only in native Plan mode; in Default, a clear change request or instruction to execute the proposal authorizes local reversible changes and planned checks.
 2. When an Edit/Write will land and you are not in an isolated worktree, load `use-worktree` first; skip it when continuing the current task already inside a worktree. Meta configuration follows AGENTS' separate branch/worktree routing.
 3. Record `base_ref="$(git rev-parse HEAD)"`, check for a dirty tree, and protect the user's existing changes.
 4. If the project AGENTS/CLAUDE is already in context, check its trigger markers directly; otherwise read it. Load `scan-trigger-docs` when trigger-on-touch markers exist.
@@ -76,13 +76,13 @@ Once requirement ambiguity is resolved in Plan mode, "it was ambiguous once" doe
 
 Accepting a plan, switching back to Default, or saying "Implement" authorizes only local, reversible source/doc changes within the current scope plus the planned verification. It does not authorize real data migration, deleting/overwriting data, production release, external messaging or any other irreversible/external write.
 
-Every `needs_explicit_approval` action must stop at `AWAIT_ACTION_APPROVAL` immediately before execution: resolve the exact target, state the impact, backup/restore or rollback, and whether a dry-run is possible, then request explicit authorization for that action. The authorization covers one execution against the stated target, parameters and state at that time; re-confirm after the target, impact or action changes. Without authorization, never perform the side effect first and ask afterwards.
+Before a `needs_explicit_approval` action, check whether existing authorization covers its exact target, parameters and impact. If it does, continue. Otherwise resolve the target, impact and recovery options, then obtain the missing authorization before acting. Changed scope requires fresh authorization; never perform a side effect first and ask afterwards.
 
 ## Execution and delegation
 
 ### Default: delegate implementation to implementer
 
-1. For multi-step tasks maintain 2–6 outcome-oriented steps with `update_plan`; single-step changes do not use the plan UI.
+1. For multi-step tasks use the available progress UI per the host adapter; single-step changes do not need it.
 2. A decision-complete implementation goes to `implementer` by default: the prompt states the goal and completion conditions, exclusive ownership and the off-limits scope, the frozen shared interfaces, `validation_fallback_contract`, the project docs that must be read, the return format, and the permitted narrow-scope checks (frozen before dispatch, as in `parallel-subagents`).
 3. Exceptions where Root writes directly: single-file, decision-free micro-changes; integration-level fixes; narrow fixes for verification failures; and hosts with no subagent (Root then implements serially). Root's direct writes are bound by the same `validation_fallback_contract`; shared manifests, public interfaces and final merged files are always written by Root.
 4. After a worker returns, Root checks the actual diff, out-of-bounds writes, shared interfaces, the user's existing changes, and that added validation/fallback matches the contract item by item; code this task added but did not list must be removed, or go back to discovery with evidence — Root may not grant the authorization itself after the fact. Enter unified verification only after the necessary integration fixes; a worker's local checks are no substitute for final integration verification.
@@ -93,11 +93,11 @@ Every `needs_explicit_approval` action must stop at `AWAIT_ACTION_APPROVAL` imme
 
 When `needs_parallel_write` is hit, load `parallel-subagents` and hand mutually exclusive write domains to several `implementer` instances; every worker must know other writers exist concurrently and must not revert or overwrite their changes. Handle returns as in item 4 above.
 
-### Incremental commits
+### Commits
 
-- After each independently verifiable feature unit is done (implementation complete and that unit's narrow-scope checks pass), Root commits once inside the task worktree per `rules/commit-message.md`, instead of saving several features up for the end of the task.
-- Stage only this unit's explicit paths; do not sweep in the user's existing changes, and do not commit `.reviews/` or `.specs/` artifacts. Workers still do not commit; their diffs are committed by Root after the integration check.
-- Do not commit intermediate states or failed verification; fixes made after the final unified verification land as follow-up commits. Push and PR still happen only on user request or `/ship`.
+- Follow the project commit policy and the user’s authorization. If explicit authorization is required, keep the changes uncommitted until requested; this workflow does not override that policy.
+- When commits are authorized, Root commits verified feature units using `rules/commit-message.md`. Stage only the unit’s paths, preserve user changes, and exclude `.reviews/` and `.specs/`.
+- Workers do not commit. Push and PR require their own authorization.
 
 ## Lightweight judgment-call audit
 
@@ -126,7 +126,7 @@ When verification fails:
 
 - Implementation problem: Root fixes narrowly and directly; large-scale rework is re-dispatched to `implementer` with the failure evidence; for the stale-rerun details see the failure routing in `rules/post-change-verify.md`;
 - Environment/dependency problem: diagnose safely first; do not disguise it as a code failure or hand it to a new writer to rewrite;
-- Two consecutive rounds of the same diagnosis with no progress: stop blind fixing and return to Plan or ask the user; resuming execution after returning to Plan still needs explicit user execution authorization. When the same required gate accumulates 4 FAILs (whether or not the diagnosis changed), you must ask the user.
+- Two consecutive rounds of the same diagnosis with no progress: stop blind fixing and return to Plan or ask the user; retain existing implementation authorization unless the scope changed; native Plan mode remains read-only. When the same required gate accumulates 4 FAILs (whether or not the diagnosis changed), you must ask the user.
 
 ## Conditional acceptance routing
 
@@ -135,9 +135,9 @@ When `needs_independent_review` or `needs_ui_review` is hit, after objective ver
 ## Host fallback
 
 - Codex / Claude have a native Plan: use the native mode and native question tools; do not pass `update_plan` off as Plan mode.
-- No native Plan: the same Root explores read-only, gives a final plan, and writes only after an explicit user GO.
+- No mode-switch tool: follow the host adapter; clarify material open questions and continue already-authorized implementation in Default.
 - No subagent: Root executes serially; if independent review is a hard gate and no fresh reviewer capability exists, report the block explicitly and do not label self-review as independent acceptance.
-- Non-interactive/unattended session: on reaching WAIT_INPUT, PLAN_READY, AWAIT_ACTION_APPROVAL or a mandatory-risk block with no way to obtain user input in this session, output the final plan / pending-approval action list and end in blocked state; never treat it as authorized on your own.
+- Non-interactive/unattended session: when required input or authorization is missing at WAIT_INPUT, PLAN_READY, AWAIT_ACTION_APPROVAL or a mandatory-risk block and cannot be obtained in this session, output the final plan / pending-approval action list and end in blocked state; never treat it as authorized on your own.
 - Tool-name differences affect only the adapter; they do not change the state machine or the gates.
 
 ## User overrides

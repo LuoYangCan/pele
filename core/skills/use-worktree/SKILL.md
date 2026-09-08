@@ -5,6 +5,8 @@ description: Isolate every code change in a dedicated git worktree; the main che
 
 # Always use a dedicated worktree for code changes
 
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
 Create the worktree before the first source write. Do not implicitly derive from the current HEAD, which may hold WIP, and do not edit code directly in the main checkout.
 
 ## Entry routing
@@ -25,7 +27,7 @@ Run `git worktree list` before creating. When an existing worktree under `.workt
 2. One-shot bootstrap (fetch, worktree add, copy gitignored config, SPM artifacts symlink, directory trust, optional project init):
 
    ```bash
-   ~/.claude/scripts/worktree-bootstrap.sh <slug> --base <baseline-branch> \
+   "$HARNESS_ROOT/scripts/worktree-bootstrap.sh" <slug> --base <baseline-branch> \
      [--type feat] [--copy <relative-path>]... [--init "<command>"]
    ```
 

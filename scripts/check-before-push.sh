@@ -87,7 +87,7 @@ esac
 
 # ----------------------- run the gate command -----------------------
 log_file="${TMPDIR:-/tmp}/claude-check-$$.log"
-if ! bash -c "$GATE_CMD" >"$log_file" 2>&1; then
+if ! (cd "$target_real" && bash -c "$GATE_CMD") >"$log_file" 2>&1; then
   echo "${GATE_CMD} failed — fix issues before pushing" >&2
   tail -40 "$log_file" >&2
   rm -f "$log_file"

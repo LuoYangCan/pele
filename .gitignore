@@ -21,3 +21,7 @@ core/skills/*/evals/
 # maintainer-only sync tool — kept local, contains real names
 scripts/sync-from-local.sh
 .sync-port-state
+
+# Local agent worktrees and Python bytecode
+.worktrees/
+__pycache__/

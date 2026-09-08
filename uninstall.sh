@@ -1,146 +1,108 @@
 #!/usr/bin/env bash
-# Pele uninstaller — removes all symlinks pointing into this pele repo from a .claude/ directory.
-# Does NOT restore backups (those live in <claude-dir>.backup-* and you can restore manually).
-# Does NOT touch settings.json (your hooks may have been customized; restore from backup if needed).
-#
-# Usage:
-#   ./uninstall.sh                          # global mode (default): clean ~/.claude/
-#   ./uninstall.sh --global                 # explicit global mode
-#   ./uninstall.sh --project <path>         # project mode: clean <path>/.claude/
-#   ./uninstall.sh --host codex             # clean ~/.codex/ instead of ~/.claude/
-#   ./uninstall.sh --host both              # clean both host dirs
-#   ./uninstall.sh --dry-run                # show what would be removed
-#
-# --global and --project are mutually exclusive. --host defaults to claude.
-
+# Remove only entries that still point at this Pele checkout.
 set -euo pipefail
 
-DRY_RUN=0
-MODE=""
 HOST="claude"
+MODE="global"
+MODE_FLAG=""
 PROJECT_PATH=""
+DRY_RUN=0
+
+usage() {
+  cat <<'EOF'
+Usage: ./uninstall.sh [--global | --project PATH] [--host claude|codex|both] [--dry-run]
+Removes Pele-owned symlinks and unmodified Pele-managed hook/index entries only.
+EOF
+}
+
 while [ $# -gt 0 ]; do
   case "$1" in
-    --global)
-      if [ "$MODE" = "project" ]; then
-        echo "Error: --global and --project are mutually exclusive." >&2
-        exit 2
-      fi
-      MODE="global"
-      shift
-      ;;
-    --project)
-      if [ "$MODE" = "global" ]; then
-        echo "Error: --global and --project are mutually exclusive." >&2
-        exit 2
-      fi
-      MODE="project"
-      shift
-      if [ $# -eq 0 ] || [ -z "${1:-}" ] || [ "${1#--}" != "$1" ]; then
-        echo "Error: --project requires a path argument." >&2
-        exit 2
-      fi
-      PROJECT_PATH="$1"
-      shift
-      ;;
-    --host)
-      shift
-      if [ $# -eq 0 ] || [ -z "${1:-}" ]; then
-        echo "Error: --host requires a value (claude | codex | both)." >&2
-        exit 2
-      fi
-      case "$1" in
-        claude|codex|both) HOST="$1" ;;
-        *) echo "Error: --host must be claude, codex, or both (got '$1')." >&2; exit 2 ;;
-      esac
-      shift
-      ;;
-    --dry-run)
-      DRY_RUN=1
-      shift
-      ;;
-    -h|--help)
-      sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
-      exit 0
-      ;;
-    *)
-      echo "Unknown arg: $1" >&2
-      exit 2
-      ;;
+    --global) [ "$MODE_FLAG" != project ] || { echo "--global and --project are mutually exclusive" >&2; exit 2; }; MODE="global"; MODE_FLAG="global"; shift ;;
+    --project) [ "$MODE_FLAG" != global ] || { echo "--global and --project are mutually exclusive" >&2; exit 2; }; MODE="project"; MODE_FLAG="project"; PROJECT_PATH="${2:-}"; [ -n "$PROJECT_PATH" ] || { echo "--project requires PATH" >&2; exit 2; }; shift 2 ;;
+    --host) HOST="${2:-}"; case "$HOST" in claude|codex|both) ;; *) echo "--host must be claude, codex, or both" >&2; exit 2;; esac; shift 2 ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "Unknown argument: $1" >&2; exit 2 ;;
   esac
 done
-
-[ -z "$MODE" ] && MODE="global"
 
 PELE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-if [ "$MODE" = "project" ]; then
-  if [ ! -d "$PROJECT_PATH" ]; then
-    echo "Error: project path '$PROJECT_PATH' does not exist." >&2
-    exit 2
-  fi
-  PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd -P)"
-  CLAUDE_DIR="${PROJECT_PATH}/.claude"
-else
-  CLAUDE_DIR="${HOME}/.claude"
-fi
-
+CLAUDE_DIR="${HOME}/.claude"
 CODEX_DIR="${CODEX_HOME:-${HOME}/.codex}"
-
-if [ "$MODE" = "project" ] && [ "$HOST" != "claude" ]; then
-  echo "Error: --host ${HOST} is incompatible with --project (Codex config is global only)." >&2
-  exit 2
+if [ "$MODE" = project ]; then
+  [ -d "$PROJECT_PATH" ] || { echo "Project path does not exist: $PROJECT_PATH" >&2; exit 2; }
+  PROJECT_PATH="$(cd "$PROJECT_PATH" && pwd -P)"
+  CLAUDE_DIR="$PROJECT_PATH/.claude"
+  CODEX_DIR="$PROJECT_PATH/.codex"
 fi
 
-TARGET_DIRS=()
-if [ "$HOST" = "claude" ] || [ "$HOST" = "both" ]; then TARGET_DIRS+=( "$CLAUDE_DIR" ); fi
-if [ "$HOST" = "codex" ]  || [ "$HOST" = "both" ]; then TARGET_DIRS+=( "$CODEX_DIR" ); fi
-
-EXISTING_DIRS=()
-for d in "${TARGET_DIRS[@]}"; do
-  [ -d "$d" ] && EXISTING_DIRS+=( "$d" )
+python_bin=""
+for candidate in "${PYTHON_BIN:-}" python3.14 python3.13 python3.12 python3.11 python3 python; do
+  [ -n "$candidate" ] || continue
+  if command -v "$candidate" >/dev/null 2>&1 && "$candidate" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+    python_bin="$candidate"
+    break
+  fi
 done
-if [ "${#EXISTING_DIRS[@]}" -eq 0 ]; then
-  echo "[pele-uninstall] Nothing to do: none of ${TARGET_DIRS[*]} exist."
-  exit 0
-fi
+[ -n "$python_bin" ] || { echo "Python 3.11 or newer is required." >&2; exit 2; }
+[ -f "$PELE_ROOT/scripts/harness-doctor.py" ] || { echo "Missing required source: scripts/harness-doctor.py" >&2; exit 2; }
+[ "$HOST" = claude ] || [ -f "$PELE_ROOT/scripts/model-policy.py" ] || { echo "Missing required source: scripts/model-policy.py" >&2; exit 2; }
 
-if [ -t 1 ]; then
-  C_DIM=$'\033[2m'; C_GREEN=$'\033[32m'; C_YELLOW=$'\033[33m'; C_RESET=$'\033[0m'
-else
-  C_DIM=""; C_GREEN=""; C_YELLOW=""; C_RESET=""
-fi
-log() { echo "${C_DIM}[pele-uninstall]${C_RESET} $*"; }
-ok()  { echo "${C_GREEN}✓${C_RESET} $*"; }
-
-log "Host:   ${HOST}"
-log "Mode:   ${MODE}$([ "$MODE" = "project" ] && echo " (${PROJECT_PATH})")"
-log "Target: ${EXISTING_DIRS[*]}"
-
-removed=0
-# Walk <claude-dir>/ and unlink any symlinks pointing into PELE_ROOT
-while IFS= read -r -d '' lnk; do
-  target="$(readlink "$lnk")"
+log() { printf '[pele-uninstall] %s\n' "$*"; }
+remove_link() {
+  local path="$1" target
+  [ -L "$path" ] || return 0
+  target="$(readlink "$path")"
   case "$target" in
-    "${PELE_ROOT}"*)
-      if [ "$DRY_RUN" = 1 ]; then
-        log "would remove: $lnk → $target"
-      else
-        rm "$lnk"
-        log "removed: $lnk"
-      fi
-      removed=$((removed+1))
+    "$PELE_ROOT"/*)
+      if [ "$DRY_RUN" = 1 ]; then log "would remove: $path"; else rm "$path"; fi
       ;;
   esac
-done < <(find "${EXISTING_DIRS[@]}" -type l -print0 2>/dev/null)
+}
+remove_tree_links() {
+  local target="$1" preserve="${2:-}"
+  [ -d "$target" ] || return 0
+  while IFS= read -r -d '' path; do
+    [ "$path" = "$preserve" ] || remove_link "$path"
+  done < <(find "$target" -type l -print0)
+}
+remove_host() {
+  local host="$1" target="$2"
+  [ -d "$target" ] || { log "nothing to remove in $target"; return; }
+  if [ "$host" = claude ]; then
+    "$python_bin" "$PELE_ROOT/scripts/harness-doctor.py" remove-hooks --target "$target" --settings "$target/settings.json" $([ "$DRY_RUN" = 1 ] && printf '%s' --dry-run)
+  else
+    local index="$target/AGENTS.md"
+    local preserved_hook=""
+    [ "$MODE" = project ] && index="$PROJECT_PATH/AGENTS.md"
+    "$python_bin" "$PELE_ROOT/scripts/harness-doctor.py" index remove --path "$index" $([ "$DRY_RUN" = 1 ] && printf '%s' --dry-run)
+    "$python_bin" "$PELE_ROOT/scripts/harness-doctor.py" codex-hooks --target "$target" --remove $([ "$DRY_RUN" = 1 ] && printf '%s' --dry-run)
+    if "$python_bin" "$PELE_ROOT/scripts/harness-doctor.py" codex-hook-active --target "$target" >/dev/null; then
+      preserved_hook="$target/hooks/protected-branch.sh"
+      log "preserving hook script still referenced by a retained Codex hook: $preserved_hook"
+    fi
+    "$python_bin" "$PELE_ROOT/scripts/model-policy.py" uninstall --target "$target" $([ "$DRY_RUN" = 1 ] && printf '%s' --dry-run)
+    remove_tree_links "$target" "$preserved_hook"
+    log "removed $host links from $target"
+    return
+  fi
+  remove_tree_links "$target"
+  log "removed $host links from $target"
+}
 
-ok "Pele symlinks removed: ${removed}"
-echo ""
-log "Notes:"
-if [ "$MODE" = "global" ]; then
-  log "  • settings.json hooks were NOT modified — edit manually or restore from ~/.claude.backup-*/settings.json.before-merge"
-else
-  log "  • ${PROJECT_PATH}/CLAUDE.md and ${PROJECT_PATH}/AGENTS.md were NOT modified — remove the '@.claude/pele-index.md' line manually if you added it"
-fi
-for d in "${EXISTING_DIRS[@]}"; do
-  log "  • Backups of pre-existing files are still in ${d}.backup-* — restore manually as needed"
+# Refuse redirected targets before touching either host or the project index.
+for uninstall_target in "$CLAUDE_DIR" "$CODEX_DIR"; do
+  [ "$HOST" != claude ] || [ "$uninstall_target" != "$CODEX_DIR" ] || continue
+  [ "$HOST" != codex ] || [ "$uninstall_target" != "$CLAUDE_DIR" ] || continue
+  [ ! -L "$uninstall_target" ] || { echo "Host target is a symlink; refusing to uninstall through it: $uninstall_target" >&2; exit 2; }
+  if [ "$uninstall_target" = "$CODEX_DIR" ] && [ -L "$uninstall_target/agents" ] && [ -e "$uninstall_target/.harness-models.json" ]; then
+    echo "Generated agents directory is a symlink; refusing to uninstall through it: $uninstall_target/agents" >&2
+    exit 2
+  fi
 done
+
+if [ "$HOST" = claude ] || [ "$HOST" = both ]; then remove_host claude "$CLAUDE_DIR"; fi
+if [ "$HOST" = codex ] || [ "$HOST" = both ]; then remove_host codex "$CODEX_DIR"; fi
+if [ "$MODE" = project ] && { [ "$HOST" = codex ] || [ "$HOST" = both ]; }; then
+  remove_tree_links "$PROJECT_PATH/.agents/skills"
+fi

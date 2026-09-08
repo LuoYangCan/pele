@@ -1,0 +1,17 @@
+{
+  "id": "path-provenance",
+  "role": "explorer",
+  "prompt": "Choose the executable helper path for this installed Pele skill.",
+  "answers": [
+    "/opt/pele/core/scripts/model-policy.py",
+    "/opt/pele/scripts/model-policy.py",
+    "~/.claude/scripts/model-policy.py"
+  ],
+  "expected": {
+    "answer": "/opt/pele/scripts/model-policy.py",
+    "evidence_contains": []
+  },
+  "files": {
+    "fixture.txt": "The loaded skill resolves to /opt/pele/core/skills/source-command-review-codex/SKILL.md. The installed harness-root helper returned /opt/pele. Pele stores executable helpers under scripts/ at its checkout root, and content under core/. This host has no Claude installation.\n"
+  }
+}

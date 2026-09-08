@@ -27,7 +27,7 @@
 #                      Products are read from <root>/<derived>/Build/Products/Debug-iphone{os,simulator}.
 #
 # Flags:
-#   --target sim      Install on the per-worktree sim via `~/.claude/scripts/worktree-sim.sh`
+#   --target sim      Install on the per-worktree sim via the sibling worktree-sim.sh
 #                     (optional helper — if absent, falls back to a booted / newest available
 #                     iPhone), then brings the Simulator window to front.
 #   --target device   Install on a connected real device via devicectl. Auto-picks the single
@@ -206,7 +206,7 @@ if [[ "$TARGET" == device ]]; then
   UDID_OUT="$DEVICE_ID"
 else
   # Optional helper: per-worktree sim isolation. Absent / non-worktree → graceful fallback.
-  SIM_OUT="$(bash "$HOME/.claude/scripts/worktree-sim.sh" ensure 2>/dev/null)" && {
+  SIM_OUT="$(bash "$(dirname "${BASH_SOURCE[0]}")/worktree-sim.sh" ensure 2>/dev/null)" && {
     UDID="$(printf '%s\n' "$SIM_OUT" | awk -F= '/^SIMULATOR_UDID=/{print $2}')"
     SIM_NAME="$(printf '%s\n' "$SIM_OUT" | awk -F= '/^SIM_NAME=/{print $2}')"
   } || UDID=""

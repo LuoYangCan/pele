@@ -24,7 +24,7 @@ The maintainer-local `scripts/sync-from-local.sh` performs the mirror pass, the 
 | Workflow rules | Yes | No private paths or project-only assumptions |
 | Portable platform rules, including Swift/iOS rules | Yes | Optional, generic, and usable outside the maintainer's projects |
 | `templates/*.md` | Yes | Keep referenced paths inside the public install |
-| Universal commands | Yes | Use `~/.claude/` public install paths |
+| Universal commands | Yes | Use `$HARNESS_ROOT/core/` and `$HARNESS_ROOT/scripts/` public install paths |
 | Listed skills and required helper files | Yes | Include every file referenced by a shipped skill; project-bound skills (e.g. monorepo SPM fixups) stay local |
 | `scripts/{trust-dir,worktree-sim,worktree-bootstrap,validation-receipt,review-input-snapshot,review-result,sync-xcode-skills,check-before-push}.sh` | Yes | Synced helper scripts |
 | `scripts/run-ios.sh` | Manual | Keep Pele's environment-configurable public implementation |
@@ -98,7 +98,7 @@ find . -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
 
 Also verify:
 
-- no dangling Markdown links or `~/.claude/...` references;
+- no dangling Markdown links or host-specific `~/.claude/...` references where `$HARNESS_ROOT` is required;
 - JSON files parse with `jq`;
 - `.specs/`, `.reviews/`, and private fixtures are absent from the commit;
 - `git diff --check` passes.

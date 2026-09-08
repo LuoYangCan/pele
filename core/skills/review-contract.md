@@ -1,11 +1,13 @@
 # Active review contract
 
+Resolve installed paths per the [host adapter](../rules/host-adapter.md) before running helpers.
+
 Shared contract for `/review` backends. This command-level workflow is separate from `plan-first-delivery`'s conditional `verifier` role.
 
 ## Inputs
 
-- `base_ref`: repository review base, normally `dev`.
-- `review_fingerprint`: `"$HOME/.claude/scripts/validation-receipt.sh" --repo "$repo" fingerprint`.
+- `base_ref`: freeze the explicit caller/project review base; otherwise resolve the remote default. If none is available, ask instead of guessing a branch.
+- `review_fingerprint`: `"$HARNESS_ROOT/scripts/validation-receipt.sh" --repo "$repo" fingerprint`.
 - `report_path`: `.reviews/<branch>-<timestamp>.md`.
 - `cleanup_result`: structured result from the selected cleanup backend.
 - `scratch`: per-run temporary directory, created once and removed on exit:
@@ -23,7 +25,7 @@ Freeze before cleanup:
 
 ```bash
 snapshot_json="$(
-  "$HOME/.claude/scripts/review-input-snapshot.sh" \
+  "$HARNESS_ROOT/scripts/review-input-snapshot.sh" \
     --repo "$repo" "$base_ref" "${branch_slug}-${timestamp}-pre-cleanup"
 )"
 snapshot_path="$(printf '%s' "$snapshot_json" | jq -r '.patch.path')"
@@ -63,13 +65,13 @@ Checklist:
 
 ## Model routing
 
-- Codex default: `gpt-5.6-sol`, reasoning `high`.
+- Codex: resolve the `branch-review` role through `scripts/model-policy.py`; do not duplicate model slugs in workflow prose.
 - Raise to `xhigh` only for concurrency/ownership, auth/security/privacy, persistence/schema migration, cross-package public APIs, or at least 15 product files.
 - Claude default: Opus high; use highest effort only for the same gates.
 
 ## Structured result
 
-Return raw JSON matching `~/.claude/skills/review-result.schema.json`. No fence, preamble, report path, or duplicate counts.
+Return raw JSON matching `"$HARNESS_ROOT/core/skills/review-result.schema.json"`. No fence, preamble, report path, or duplicate counts.
 
 Verdict is derived from findings:
 
@@ -82,7 +84,7 @@ Verdict is derived from findings:
 Capture the reviewer JSON in `$temp_result` (see Inputs), then run:
 
 ```bash
-helper="$HOME/.claude/scripts/review-result.sh"
+helper="$HARNESS_ROOT/scripts/review-result.sh"
 "$helper" validate "$temp_result" "$review_fingerprint"
 "$helper" publish active "$temp_result" "$review_fingerprint" \
   "$report_path" "$branch" "$base_ref" "$reviewer_label" \

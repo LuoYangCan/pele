@@ -5,7 +5,9 @@ description: Build the iOS app, then install + launch it on this worktree's Simu
 
 # open-sim
 
-"Build → install → launch → bring the Simulator window to the front" in one shot. The mechanical part lives in the shared script `~/.claude/scripts/run-ios.sh` (`--target sim`); this skill only calls it and relays the result to the user. The real-device counterpart is `run-device` (`--target device`), sharing the same script.
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
+"Build → install → launch → bring the Simulator window to the front" in one shot. The mechanical part lives in the shared script `"$HARNESS_ROOT/scripts/run-ios.sh"` (`--target sim`); this skill only calls it and relays the result to the user. The real-device counterpart is `run-device` (`--target device`), sharing the same script.
 
 ## When to use
 
@@ -25,12 +27,12 @@ Not for: macOS apps · **a real device (use `run-device`)** · release / archive
 Build every time by default (so you see the current code):
 
 ```bash
-bash ~/.claude/scripts/run-ios.sh --target sim
+bash "$HARNESS_ROOT/scripts/run-ios.sh" --target sim
 ```
 
 - The user **explicitly** says "no build / skip compiling / just install the existing artifact" → add `--no-build`:
   ```bash
-  bash ~/.claude/scripts/run-ios.sh --target sim --no-build
+  bash "$HARNESS_ROOT/scripts/run-ios.sh" --target sim --no-build
   ```
 
 The script builds → locates the build artifact (scans `Build/Products/*-iphonesimulator/`, takes the newest `.app`; the configuration name is project-defined and can change, so `Debug-` is not hardcoded) → reads the bundle id from the artifact's `Info.plist` → gets the per-worktree sim via `worktree-sim.sh ensure` (auto fallback outside a worktree) → `simctl install` + `launch` → `open -a Simulator`, and finally prints the `----- run-ios result -----` result block.

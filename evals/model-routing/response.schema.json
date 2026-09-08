@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["case_id", "answer", "evidence"],
+  "properties": {
+    "case_id": { "type": "string" },
+    "answer": { "type": "string" },
+    "evidence": { "type": "string" }
+  }
+}

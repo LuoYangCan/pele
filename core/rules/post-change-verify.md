@@ -33,7 +33,7 @@ A receipt alone cannot prove that semantic or UI acceptance is still valid. When
 - build FAIL: separate implementation errors from environment/dependency errors; fix only the scope the evidence hits.
 - test FAIL: first determine whether it is a regression from this change, a pre-existing failure, or an environment issue, then decide the fix.
 - After any fix changes the source, all old lint/check/build/test/review evidence is stale; re-run from the earliest invalidated required gate, usually starting at lint/check. Only an environment retry with unchanged source/context may re-run just the failed gate.
-- Stop blind fixing when the same diagnosis makes no progress twice in a row; go back to Plan or ask the user. Resuming execution after going back to Plan still needs the user's explicit execution authorization.
+- Stop blind fixing when the same diagnosis makes no progress twice in a row; go back to Plan or ask the user. Returning to Plan preserves existing execution authorization while scope and intent remain unchanged; obtain authorization only for newly introduced actions.
 - When the same required gate accumulates 4 FAILs (whether or not the diagnosis changed), you must ask the user; the "go back to Plan" branch is no longer allowed.
 
 An independent verifier and UI reviewer start only after the corresponding `plan-first-delivery` gate hits and objective verification PASSes.

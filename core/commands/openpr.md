@@ -4,4 +4,4 @@ description: Commit the current changes sensibly, push the current branch, and o
 
 Use the source-command-ship skill:
 
-`~/.claude/skills/source-command-ship/SKILL.md`
+`$HARNESS_ROOT/core/skills/source-command-ship/SKILL.md`

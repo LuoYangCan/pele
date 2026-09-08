@@ -1,0 +1,12 @@
+{
+  "roles": {
+    "root": { "model": "gpt-6-astra", "effort": "ultra" },
+    "explorer": { "model": "gpt-5.6-terra", "effort": "high" },
+    "implementer": { "model": "gpt-5.6-terra", "effort": "high" },
+    "verifier": { "model": "gpt-5.6-terra", "effort": "high" },
+    "ui-reviewer": { "model": "gpt-5.6-terra", "effort": "high" },
+    "command-runner": { "model": "gpt-5.6-luna", "effort": "low" },
+    "branch-review": { "model": "gpt-5.6-sol", "effort": "high" },
+    "pr-reviewer": { "model": "gpt-5.6-terra", "effort": "high" }
+  }
+}

@@ -5,6 +5,8 @@ description: Clean up the current git worktree before exiting an agent session. 
 
 # cleanup-and-exit
 
+Resolve installed paths per the [host adapter](../../rules/host-adapter.md) before running helpers.
+
 Clean the current task worktree before the user exits. Do not push, merge, or edit product code.
 
 ## Inspect State
@@ -95,10 +97,10 @@ Option 1:
 
 ```bash
 worktree_path="$(git rev-parse --show-toplevel)"
-bash ~/.claude/scripts/worktree-sim.sh delete
+bash "$HARNESS_ROOT/scripts/worktree-sim.sh" delete
 cd <main-repo>
 git worktree remove "$worktree_path"
-bash ~/.claude/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh "$worktree_path"
+bash "$HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh" "$worktree_path"
 git branch -D <branch>
 ```
 
@@ -106,16 +108,16 @@ Option 2:
 
 ```bash
 worktree_path="$(git rev-parse --show-toplevel)"
-bash ~/.claude/scripts/worktree-sim.sh delete
+bash "$HARNESS_ROOT/scripts/worktree-sim.sh" delete
 cd <main-repo>
 git worktree remove "$worktree_path"
-bash ~/.claude/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh "$worktree_path"
+bash "$HARNESS_ROOT/core/skills/cleanup-and-exit/scripts/remove-worktree-derived-data.sh" "$worktree_path"
 ```
 
 Option 3:
 
 ```bash
-bash ~/.claude/scripts/worktree-sim.sh shutdown
+bash "$HARNESS_ROOT/scripts/worktree-sim.sh" shutdown
 ```
 
 The DerivedData script removes only cache entries whose `WorkspacePath` equals `<worktree-path>` or is below it, and refuses to run while `<worktree-path>` still exists. Run it after any successful deletion path, including `ExitWorktree remove`, and report its removed count and size. Then continue future commands from `<main-repo>`. If an `ExitWorktree` tool exists, use `remove` for option 1 and `keep` for options 2/3. In Codex Desktop/CLI where no `ExitWorktree` tool exists, do not simulate it; just report the main repo path.

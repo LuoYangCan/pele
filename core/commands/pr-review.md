@@ -4,4 +4,4 @@ description: PR review — a subagent reviews the given PR (the current branch's
 
 Use the source-command-pr-review skill:
 
-`~/.claude/skills/source-command-pr-review/SKILL.md`
+`$HARNESS_ROOT/core/skills/source-command-pr-review/SKILL.md`

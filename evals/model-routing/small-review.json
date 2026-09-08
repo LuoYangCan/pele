@@ -1,0 +1,17 @@
+{
+  "id": "small-review",
+  "role": "pr-reviewer",
+  "prompt": "Assess whether this diff introduces a correctness defect for the stated valid inputs.",
+  "answers": [
+    "must_fix",
+    "no_finding",
+    "needs_more_context"
+  ],
+  "expected": {
+    "answer": "must_fix",
+    "evidence_contains": []
+  },
+  "files": {
+    "fixture.txt": "Swift function inputs: count may be any integer from 0 through value.count. Frozen implementation:\nfunc prefix(_ value: String, count: Int) -> String {\n  guard count >= 0 && count <= value.count else { return value }\n  let end = value.index(value.startIndex, offsetBy: count + 1)\n  return String(value[..<end])\n}\n"
+  }
+}
